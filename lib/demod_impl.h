@@ -46,17 +46,21 @@ namespace gr {
 
       unsigned short  d_num_symbols;
       unsigned short  d_fft_size_factor;
-      unsigned short  d_fft_size;
+      unsigned int    d_fft_size;
       unsigned short  d_overlaps;
       unsigned short  d_offset;
+      unsigned short  d_p;
+      unsigned int    d_num_samples;
+      unsigned int    d_bin_len;
 
+      float           d_cfo;
       float           d_power;
       float           d_threshold;
       bool            d_squelched;
 
-      unsigned short  d_preamble_idx;
+      unsigned int    d_preamble_idx;
       unsigned short  d_sfd_idx;
-      std::vector<unsigned short>  d_argmax_history;
+      std::vector<unsigned int>  d_argmax_history;
       std::vector<unsigned short>  d_sfd_history;
       unsigned short  d_sync_recovery_counter;
 
@@ -69,16 +73,19 @@ namespace gr {
 
       std::vector<unsigned short> d_symbols;
 
-      std::ofstream f_raw, f_up_windowless, f_up, f_down;
+      std::ofstream f_raw, f_up_windowless, f_up, f_down, f_fft;
 
      public:
       demod_impl( unsigned short spreading_factor,
                   bool low_data_rate,
                   float beta,
-                  unsigned short fft_factor);
+                  unsigned short fft_factor,
+                  float threshold,
+                  float fs_bw_ratio);
       ~demod_impl();
 
       unsigned short argmax(gr_complex *fft_result, bool update_squelch);
+      unsigned int argmax_32f(float *fft_result, bool update_squelch, float *max_val_p);
 
       // Where all the action really happens
       void forecast (int noutput_items, gr_vector_int &ninput_items_required);

@@ -4,7 +4,7 @@
   <key>lora_demod</key>
   <category>lora</category>
   <import>import lora</import>
-  <make>lora.demod($spreading_factor, $low_data_rate, $beta, $fft_factor)</make>
+  <make>lora.demod($spreading_factor, $low_data_rate, $beta, $fft_factor, $threshold, $fs_bw_ratio)</make>
 
   <param>
     <name>Spreading Factor</name>
@@ -29,6 +29,18 @@
     <key>fft_factor</key>
     <value>2</value>
     <type>int</type>
+  </param>
+  <param>
+    <name>Peak Height Threshold</name>
+    <key>threshold</key>
+    <value>0.005</value>
+    <type>float</type>
+  </param>
+  <param>
+    <name>Samp-BW ratio</name>
+    <key>fs_bw_ratio</key>
+    <value>8</value>
+    <type>float</type>
   </param>
 
   <sink>

@@ -28,7 +28,7 @@
 #define DEBUG_OFF     0
 #define DEBUG_INFO    1
 #define DEBUG_VERBOSE 2
-#define DEBUG         DEBUG_OFF
+#define DEBUG         DEBUG_INFO
 
 #define DUMP_IQ       0
 
@@ -42,10 +42,12 @@ namespace gr {
     demod::make(  unsigned short spreading_factor,
                   bool  low_data_rate,
                   float beta,
-                  unsigned short fft_factor)
+                  unsigned short fft_factor,
+                  float threshold,
+                  float fs_bw_ratio)
     {
       return gnuradio::get_initial_sptr
-        (new demod_impl(spreading_factor, low_data_rate, beta, fft_factor));
+        (new demod_impl(spreading_factor, low_data_rate, beta, fft_factor, threshold, fs_bw_ratio));
     }
 
     /*
@@ -54,22 +56,28 @@ namespace gr {
     demod_impl::demod_impl( unsigned short spreading_factor,
                             bool  low_data_rate,
                             float beta,
-                            unsigned short fft_factor)
+                            unsigned short fft_factor,
+                            float threshold,
+                            float fs_bw_ratio)
       : gr::block("demod",
               gr::io_signature::make(1, 1, sizeof(gr_complex)),
               gr::io_signature::make(0, 0, 0)),
         f_raw("raw.out", std::ios::out),
+        f_fft("fft.out", std::ios::out),
         f_up_windowless("up_windowless.out", std::ios::out),
         f_up("up.out", std::ios::out),
         f_down("down.out", std::ios::out),
         d_sf(spreading_factor),
         d_ldr(low_data_rate),
         d_beta(beta),
-        d_fft_size_factor(fft_factor)
+        d_fft_size_factor(fft_factor),
+        d_threshold(threshold)
     {
       assert((d_sf > 5) && (d_sf < 13));
       if (d_sf == 6) assert(!header);
       assert(d_fft_size_factor > 0);
+      assert(((int)fs_bw_ratio) == fs_bw_ratio);
+      d_p = (int) fs_bw_ratio;
 
       d_out_port = pmt::mp("out");
       message_port_register_out(d_out_port);
@@ -77,30 +85,28 @@ namespace gr {
       d_state = S_RESET;
 
       d_num_symbols = (1 << d_sf);
-      d_fft_size = d_fft_size_factor*d_num_symbols;
+      d_num_samples = d_p*d_num_symbols;
+      d_bin_len = d_fft_size_factor*d_num_symbols;
+      d_fft_size = d_fft_size_factor*d_num_samples;
       d_fft = new fft::fft_complex(d_fft_size, true, 1);
       d_overlaps = OVERLAP_DEFAULT;
       d_offset = 0;
 
-      d_window = fft::window::build(fft::window::WIN_KAISER, d_num_symbols, d_beta);
+      d_window = fft::window::build(fft::window::WIN_KAISER, d_num_samples, d_beta);
 
       d_power     = .000000001;     // MAGIC
-      d_threshold = 0.005;          // MAGIC
+      // d_threshold = 0.005;          // MAGIC
       // d_threshold = 0.003;          // MAGIC
       // d_threshold = 0.12;           // MAGIC
 
-      float phase = -M_PI;
-      double accumulator = 0;
-
       // Create local chirp tables.  Each table is 2 chirps long to allow memcpying from arbitrary offsets.
-      for (int i = 0; i < 2*d_num_symbols; i++) {
-        accumulator += phase;
-        d_downchirp.push_back(gr_complex(std::conj(std::polar(1.0, accumulator))));
-        d_upchirp.push_back(gr_complex(std::polar(1.0, accumulator)));
-        phase += (2*M_PI)/d_num_symbols;
+      for (int i = 0; i < d_num_samples; i++) {
+        double phase = M_PI/d_p*(i-i*i/(float)d_num_samples);
+        d_downchirp.push_back(gr_complex(std::polar(1.0, phase)));
+        d_upchirp.push_back(gr_complex(std::polar(1.0, -phase)));
       }
 
-      set_history(DEMOD_HISTORY_DEPTH*d_num_symbols);  // Sync is 2.25 chirp periods long
+      set_history(DEMOD_HISTORY_DEPTH*d_num_samples);  // Sync is 2.25 chirp periods long
     }
 
     /*
@@ -109,6 +115,34 @@ namespace gr {
     demod_impl::~demod_impl()
     {
       delete d_fft;
+    }
+
+    unsigned int
+    demod_impl::argmax_32f(float *fft_result, 
+                       bool update_squelch, float *max_val_p)
+    {
+      float mag   = abs(fft_result[0]);
+      float max_val = mag;
+      unsigned int   max_idx = 0;
+
+      for (unsigned int i = 0; i < d_bin_len; i++)
+      {
+        mag = abs(fft_result[i]);
+        if (mag > max_val)
+        {
+          max_idx = i;
+          max_val = mag;
+        }
+      }
+
+      if (update_squelch)
+      {
+        d_power = max_val;
+        d_squelched = (max_val > d_threshold) ? false : true;
+      }
+
+      *max_val_p = max_val;
+      return max_idx;
     }
 
     unsigned short
@@ -152,12 +186,17 @@ namespace gr {
                        gr_vector_const_void_star &input_items,
                        gr_vector_void_star &output_items)
     {
+      if (ninput_items[0] < 4*d_num_samples) return 0;
       const gr_complex *in = (const gr_complex *)  input_items[0];
-      unsigned short  *out = (unsigned short   *) output_items[0];
-      unsigned short num_consumed = d_num_symbols;
-      unsigned short max_index = 0;
+      unsigned int  *out = (unsigned int   *) output_items[0];
+      unsigned int num_consumed = d_num_samples;
       bool preamble_found = false;
       bool sfd_found      = false;
+      unsigned int max_index = 0;
+      float max_val = 0;
+      unsigned int max_index_sfd = 0;
+      float max_val_sfd = 0;
+      unsigned int tmp_idx;
 
       // Nomenclature:
       //  up_block   == de-chirping buffer to contain upchirp features: the preamble, sync word, and data chirps
@@ -165,6 +204,8 @@ namespace gr {
       gr_complex *buffer     = (gr_complex *)volk_malloc(d_fft_size*sizeof(gr_complex), volk_get_alignment());
       gr_complex *up_block   = (gr_complex *)volk_malloc(d_fft_size*sizeof(gr_complex), volk_get_alignment());
       gr_complex *down_block = (gr_complex *)volk_malloc(d_fft_size*sizeof(gr_complex), volk_get_alignment());
+      float *fft_res_mag = (float*)volk_malloc(d_fft_size*sizeof(float), volk_get_alignment());
+      float *fft_res_add = (float*)volk_malloc(d_bin_len*sizeof(float), volk_get_alignment());
 
       if (buffer == NULL || up_block == NULL || down_block == NULL)
       {
@@ -172,38 +213,48 @@ namespace gr {
       }
 
       // Dechirp the incoming signal
-      volk_32fc_x2_multiply_32fc(down_block, in, &d_upchirp[0], d_num_symbols);
+      volk_32fc_x2_multiply_32fc(down_block, in, &d_upchirp[0], d_num_samples);
 
       if (d_state == S_READ_HEADER || d_state == S_READ_PAYLOAD)
       {
-        volk_32fc_x2_multiply_32fc(up_block, in, &d_downchirp[d_offset], d_num_symbols);
+        volk_32fc_x2_multiply_32fc(up_block, in, &d_downchirp[0], d_num_samples);
       }
       else
       {
-        volk_32fc_x2_multiply_32fc(up_block, in, &d_downchirp[0], d_num_symbols);
+        volk_32fc_x2_multiply_32fc(up_block, in, &d_downchirp[0], d_num_samples);
       }
 
       // Enable to write IQ to disk for debugging
       #if DUMP_IQ
-        f_up_windowless.write((const char*)&up_block[0], d_num_symbols*sizeof(gr_complex));
+        f_up_windowless.write((const char*)&up_block[0], d_num_samples*sizeof(gr_complex));
       #endif
 
       // Windowing
-      volk_32fc_32f_multiply_32fc(up_block, up_block, &d_window[0], d_num_symbols);
+      // volk_32fc_32f_multiply_32fc(up_block, up_block, &d_window[0], d_num_samples);
 
       #if DUMP_IQ
-        if (d_state != S_SFD_SYNC) f_down.write((const char*)&down_block[0], d_num_symbols*sizeof(gr_complex));
-        f_up.write((const char*)&up_block[0], d_num_symbols*sizeof(gr_complex));
+        if (d_state != S_SFD_SYNC) f_down.write((const char*)&down_block[0], d_num_samples*sizeof(gr_complex));
+        f_up.write((const char*)&up_block[0], d_num_samples*sizeof(gr_complex));
       #endif
 
       // Preamble and Data FFT
       // If d_fft_size_factor is greater than 1, the rest of the sample buffer will be zeroed out and blend into the window
       memset(d_fft->get_inbuf(),            0, d_fft_size*sizeof(gr_complex));
-      memcpy(d_fft->get_inbuf(), &up_block[0], d_num_symbols*sizeof(gr_complex));
+      memcpy(d_fft->get_inbuf(), &up_block[0], d_num_samples*sizeof(gr_complex));
       d_fft->execute();
+      #if DUMP_IQ
+        f_fft.write((const char*)d_fft->get_outbuf(), d_fft_size*sizeof(gr_complex));
+      #endif
+
+      // fft result magnitude summation
+      volk_32fc_magnitude_32f(fft_res_mag, d_fft->get_outbuf(), d_fft_size);
+      volk_32f_x2_add_32f(fft_res_add, fft_res_mag, &fft_res_mag[d_bin_len], d_bin_len);
+      volk_32f_x2_add_32f(fft_res_add, fft_res_add, &fft_res_mag[d_fft_size-2*d_bin_len], d_bin_len);
+      volk_32f_x2_add_32f(fft_res_add, fft_res_add, &fft_res_mag[d_fft_size-d_bin_len], d_bin_len);
 
       // Take argmax of returned FFT (similar to MFSK demod)
-      max_index = argmax(d_fft->get_outbuf(), true);
+      max_index = argmax_32f(fft_res_add, true, &max_val);
+
       d_argmax_history.insert(d_argmax_history.begin(), max_index);
 
       if (d_argmax_history.size() > REQUIRED_PREAMBLE_CHIRPS)
@@ -266,6 +317,9 @@ namespace gr {
         {
           d_state = S_SFD_SYNC;
 
+          // move preamble peak to bin zero
+          num_consumed = d_num_samples - d_p*d_preamble_idx/d_fft_size_factor;
+
           #if DEBUG >= DEBUG_INFO
             std::cout << "Next state: S_SFD_SYNC" << std::endl;
           #endif
@@ -291,70 +345,111 @@ namespace gr {
           #endif
         }
 
-        // Iterate through sample buffer
-        for (int ol = 0; ol < d_overlaps; ol++)
+        // Dechirp
+        volk_32fc_x2_multiply_32fc(down_block, in, &d_upchirp[0], d_num_samples);
+
+        // Enable to write out overlapped chirps to disk for debugging
+        #if DUMP_IQ
+          f_down.write((const char*)&down_block[0], d_num_samples*sizeof(gr_complex));
+        #endif
+
+        memset(d_fft->get_inbuf(),          0, d_fft_size*sizeof(gr_complex));
+        memcpy(d_fft->get_inbuf(), down_block, d_num_samples*sizeof(gr_complex));
+        d_fft->execute();
+
+        // magnitude addition of fft result
+        volk_32fc_magnitude_32f(fft_res_mag, d_fft->get_outbuf(), d_fft_size);
+        volk_32f_x2_add_32f(fft_res_add, fft_res_mag, &fft_res_mag[d_bin_len], d_bin_len);
+        volk_32f_x2_add_32f(fft_res_add, fft_res_add, &fft_res_mag[d_fft_size-2*d_bin_len], d_bin_len);
+        volk_32f_x2_add_32f(fft_res_add, fft_res_add, &fft_res_mag[d_fft_size-d_bin_len], d_bin_len);
+
+        // Take argmax of downchirp FFT
+        max_index_sfd = argmax_32f(fft_res_add, false, &max_val_sfd); 
+
+        // If SFD is detected
+        if (max_val_sfd > max_val)
         {
-          d_offset = ((ol*d_num_symbols)/d_overlaps) % d_num_symbols;
-
-          // Fill working buffer based on offset
-          for (int j = 0; j < d_num_symbols; j++)
-          {
-            buffer[j] = in[d_offset+j];
+          int idx = max_index_sfd;
+          if (max_index_sfd > d_bin_len / 2) {
+            idx = max_index_sfd - d_bin_len;
           }
+          d_cfo = idx / 2.0;
+          num_consumed = (int)(2.25*d_num_samples + d_p*d_cfo/d_fft_size_factor);
 
-          #if DEBUG >= DEBUG_VERBOSE
-            std::cout << "ol: " << std::dec << ol << " d_overlaps: " << d_overlaps << std::endl;
+          d_state = S_READ_HEADER;
+
+          #if DEBUG >= DEBUG_INFO
+            std::cout << "Next state: S_READ_HEADER" << std::endl;
+            std::cout << "CFO: " << d_cfo << std::endl;
           #endif
 
-          // Dechirp
-          volk_32fc_x2_multiply_32fc(down_block, buffer, &d_upchirp[d_offset], d_num_symbols);
-
-          // Enable to write out overlapped chirps to disk for debugging
-          #if DUMP_IQ
-            f_down.write((const char*)&down_block[0], d_num_symbols*sizeof(gr_complex));
-          #endif
-
-          memset(d_fft->get_inbuf(),          0, d_fft_size*sizeof(gr_complex));
-          memcpy(d_fft->get_inbuf(), down_block, d_num_symbols*sizeof(gr_complex));
-          d_fft->execute();
-
-          // Take argmax of downchirp FFT
-          max_index = argmax(d_fft->get_outbuf(), false); 
-          d_sfd_history.insert(d_sfd_history.begin(), max_index);
-
-          if (d_sfd_history.size() > REQUIRED_SFD_CHIRPS*OVERLAP_FACTOR)
-          {
-            d_sfd_history.pop_back();
-
-            sfd_found = true;
-            d_sfd_idx = d_sfd_history[0];
-
-            // Check for discontinuities that exceed some preset tolerance
-            for (int i = 1; i < REQUIRED_SFD_CHIRPS*OVERLAP_FACTOR; i++)
-            {
-              if (abs(int(d_sfd_idx) - int(d_sfd_history[i])) > d_fft_size_factor*LORA_SFD_TOLERANCE)
-              {
-                sfd_found = false;
-              }
-            }
-
-            // If within tolerance, we've found the SFD and are synchronized
-            if (sfd_found)
-            {
-              num_consumed = (ol*d_num_symbols)/d_overlaps + 5*d_num_symbols/4;   // Skip last quarter chirp
-              d_offset = (d_offset + (d_num_symbols/4)) % d_num_symbols;
-
-              d_state = S_READ_HEADER;
-              d_overlaps = OVERLAP_DEFAULT;
-
-              #if DEBUG >= DEBUG_INFO
-                std::cout << "Next state: S_READ_HEADER" << std::endl;
-              #endif
-
-              break;
-            }
-          }
+          break;
         }
+
+        // Iterate through sample buffer
+        // for (int ol = 0; ol < d_overlaps; ol++)
+        // {
+        //   d_offset = ((ol*d_num_symbols)/d_overlaps) % d_num_symbols;
+
+        //   // Fill working buffer based on offset
+        //   for (int j = 0; j < d_num_symbols; j++)
+        //   {
+        //     buffer[j] = in[d_offset+j];
+        //   }
+
+        //   #if DEBUG >= DEBUG_VERBOSE
+        //     std::cout << "ol: " << std::dec << ol << " d_overlaps: " << d_overlaps << std::endl;
+        //   #endif
+
+        //   // Dechirp
+        //   volk_32fc_x2_multiply_32fc(down_block, buffer, &d_upchirp[d_offset], d_num_symbols);
+
+        //   // Enable to write out overlapped chirps to disk for debugging
+        //   #if DUMP_IQ
+        //     f_down.write((const char*)&down_block[0], d_num_symbols*sizeof(gr_complex));
+        //   #endif
+
+        //   memset(d_fft->get_inbuf(),          0, d_fft_size*sizeof(gr_complex));
+        //   memcpy(d_fft->get_inbuf(), down_block, d_num_symbols*sizeof(gr_complex));
+        //   d_fft->execute();
+
+        //   // Take argmax of downchirp FFT
+        //   max_index = argmax(d_fft->get_outbuf(), false, &max_val); 
+        //   d_sfd_history.insert(d_sfd_history.begin(), max_index);
+
+        //   if (d_sfd_history.size() > REQUIRED_SFD_CHIRPS*OVERLAP_FACTOR)
+        //   {
+        //     d_sfd_history.pop_back();
+
+        //     sfd_found = true;
+        //     d_sfd_idx = d_sfd_history[0];
+
+        //     // Check for discontinuities that exceed some preset tolerance
+        //     for (int i = 1; i < REQUIRED_SFD_CHIRPS*OVERLAP_FACTOR; i++)
+        //     {
+        //       if (abs(int(d_sfd_idx) - int(d_sfd_history[i])) > d_fft_size_factor*LORA_SFD_TOLERANCE)
+        //       {
+        //         sfd_found = false;
+        //       }
+        //     }
+
+        //     // If within tolerance, we've found the SFD and are synchronized
+        //     if (sfd_found)
+        //     {
+        //       num_consumed = (ol*d_num_symbols)/d_overlaps + 5*d_num_symbols/4;   // Skip last quarter chirp
+        //       // d_offset = (d_offset + (d_num_symbols/4)) % d_num_symbols;
+
+        //       d_state = S_READ_HEADER;
+        //       d_overlaps = OVERLAP_DEFAULT;
+
+        //       #if DEBUG >= DEBUG_INFO
+        //         std::cout << "Next state: S_READ_HEADER" << std::endl;
+        //       #endif
+
+        //       break;
+        //     }
+        //   }
+        // }
 
         break;
 
@@ -382,7 +477,11 @@ namespace gr {
          * Dividing by d_fft_size_factor reduces symbols to [0:(2**sf)-1] range
          * Dividing by 4 to further reduce symbol set to [0:(2**(sf-2)-1)], since header is sent at SF-2
          */
-        d_symbols.push_back( ( ( d_num_symbols + (d_argmax_history[0]/d_fft_size_factor) - (d_preamble_idx/d_fft_size_factor)) % d_num_symbols) / 4);
+        tmp_idx = ((unsigned short) (d_num_symbols + (max_index - d_cfo)/d_fft_size_factor)) % d_num_symbols;
+        #if DEBUG >= DEBUG_INFO
+          std::cout << "HEADER MIDX: " << tmp_idx << ", MV: " << max_val << std::endl;
+        #endif
+        d_symbols.push_back( tmp_idx / 4 + ((tmp_idx % 4 > 2) ? 1 : 0) );
 
         break;
 
@@ -397,17 +496,22 @@ namespace gr {
             std::cout << "Next state: S_OUT" << std::endl;
           #endif
         }
-
-        /* Preamble + modulo operation normalizes the symbols about the preamble; preamble symbol == value 0
-         * Dividing by d_fft_size_factor reduces symbols to [0:(2**sf)-1] range
-         */
-        if (d_ldr)  // if low data rate optimization is on, give entire packet the header treatment of ppm == SF-2
-        {
-          d_symbols.push_back( ( ( d_num_symbols + (d_argmax_history[0]/d_fft_size_factor) - (d_preamble_idx/d_fft_size_factor)) % d_num_symbols) / 4);
-        }
-        else
-        {
-          d_symbols.push_back( ( d_num_symbols + (d_argmax_history[0]/d_fft_size_factor) - (d_preamble_idx/d_fft_size_factor)) % d_num_symbols);  
+        else {
+          /* Preamble + modulo operation normalizes the symbols about the preamble; preamble symbol == value 0
+          * Dividing by d_fft_size_factor reduces symbols to [0:(2**sf)-1] range
+          */
+          tmp_idx = ((unsigned short) (d_num_symbols + (max_index - d_cfo)/d_fft_size_factor)) % d_num_symbols;
+          #if DEBUG >= DEBUG_INFO
+            std::cout << "MIDX: " << tmp_idx << ", MV: " << max_val << std::endl;
+          #endif
+          if (d_ldr)  // if low data rate optimization is on, give entire packet the header treatment of ppm == SF-2
+          {
+            d_symbols.push_back( tmp_idx / 4 + ((tmp_idx % 4 > 2) ? 1 : 0) );
+          }
+          else
+          {
+            d_symbols.push_back( tmp_idx );
+          }
         }
 
         break;
@@ -425,6 +529,12 @@ namespace gr {
 
         #if DEBUG >= DEBUG_INFO
           std::cout << "Next state: S_RESET" << std::endl;
+          std::cout << "d_symbols size: " << d_symbols.size() << std::endl;
+          std::cout << "d_symbols: ";
+          for (auto i: d_symbols) {
+            std::cout << i << " ";
+          }
+          std::cout << std::endl;
         #endif
 
         break;
@@ -445,6 +555,8 @@ namespace gr {
       free(down_block);
       free(up_block);
       free(buffer);
+      free(fft_res_mag);
+      free(fft_res_add);
 
       return noutput_items;
     }

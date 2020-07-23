@@ -500,7 +500,7 @@ namespace gr {
           /* Preamble + modulo operation normalizes the symbols about the preamble; preamble symbol == value 0
           * Dividing by d_fft_size_factor reduces symbols to [0:(2**sf)-1] range
           */
-          tmp_idx = ((unsigned short) (d_num_symbols + (max_index - d_cfo)/d_fft_size_factor)) % d_num_symbols;
+          tmp_idx = ((unsigned short) round(d_num_symbols + (max_index - d_cfo)/d_fft_size_factor)) % d_num_symbols;
           #if DEBUG >= DEBUG_INFO
             std::cout << "MIDX: " << tmp_idx << ", MV: " << max_val << std::endl;
           #endif

@@ -24,6 +24,7 @@
 #include <iostream>
 #include <bitset>
 #include <lora/decode.h>
+#include "utilities.h"
 
 namespace gr {
   namespace lora {
@@ -34,7 +35,7 @@ namespace gr {
       pmt::pmt_t d_in_port;
       pmt::pmt_t d_out_port;
 
-      const unsigned short *d_whitening_sequence;
+      const unsigned char *d_whitening_sequence;
 
       unsigned char d_sf;
       unsigned char d_cr;
@@ -57,7 +58,7 @@ namespace gr {
 
       void to_gray(std::vector<unsigned short> &symbols);
       void from_gray(std::vector<unsigned short> &symbols);
-      void whiten(std::vector<unsigned short> &symbols);
+      void whiten(std::vector<unsigned char> &codewords);
       void deinterleave(std::vector<unsigned short> &symbols, std::vector<unsigned char> &codewords, unsigned char ppm, unsigned char rdd);
       void hamming_decode(std::vector<unsigned char> &codewords, std::vector<unsigned char> &bytes, unsigned char rdd);
       unsigned char parity(unsigned char c, unsigned char bitmask);

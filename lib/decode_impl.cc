@@ -27,10 +27,22 @@
 
 #define MAXIMUM_RDD 4
 
-#define HAMMING_P1_BITMASK 0xAA  // 0b10101010
-#define HAMMING_P2_BITMASK 0x66  // 0b01100110
-#define HAMMING_P4_BITMASK 0x1E  // 0b00011110
-#define HAMMING_P8_BITMASK 0xFE  // 0b11111110
+// #define HAMMING_P1_BITMASK 0xAA  // 0b10101010
+// #define HAMMING_P2_BITMASK 0x66  // 0b01100110
+// #define HAMMING_P4_BITMASK 0x1E  // 0b00011110
+// #define HAMMING_P8_BITMASK 0xFE  // 0b11111110
+
+// not standard hamming code
+// LoRa codeword: p4 p2 p1 p3 d1 d2 d4 d3
+// pi: the ith parity; di: the ith data bits
+#define HAMMING_P1_BITMASK 0x2E  // 0b00101110
+#define HAMMING_P2_BITMASK 0x4B  // 0b01001011
+#define HAMMING_P3_BITMASK 0x17  // 0b00010111
+#define HAMMING_P4_BITMASK 0xFF  // 0b11111111
+#define HAMMING_D1_BITMASK 0x08  // 0b00001000
+#define HAMMING_D2_BITMASK 0x04  // 0b00000100
+#define HAMMING_D3_BITMASK 0x01  // 0b00000001
+#define HAMMING_D4_BITMASK 0x02  // 0b00000010
 
 #define INTERLEAVER_BLOCK_SIZE 12
 
@@ -76,40 +88,10 @@ namespace gr {
 
       set_msg_handler(d_in_port, boost::bind(&decode_impl::decode, this, _1));
 
-      switch(d_sf)
+      d_whitening_sequence = whitening_sequence;
+      if (d_sf < 6 | d_sf > 12)
       {
-        case 6:
-          if (d_ldr) d_whitening_sequence = whitening_sequence_sf6_ldr_implicit;    // implicit header, LDR on
-          else       d_whitening_sequence = whitening_sequence_sf6_implicit;        // implicit header, LDR on
-          break;
-        case 7:
-          if (d_ldr) d_whitening_sequence = whitening_sequence_sf7_ldr_implicit;    // implicit header, LDR on
-          else       d_whitening_sequence = whitening_sequence_sf7_implicit;        // implicit header, LDR on
-          break;
-        case 8:
-          if (d_ldr) d_whitening_sequence = whitening_sequence_sf8_ldr_implicit;    // implicit header, LDR on
-          else       d_whitening_sequence = whitening_sequence_sf8_implicit;        // implicit header, LDR on
-          break;
-        case 9:
-          if (d_ldr) d_whitening_sequence = whitening_sequence_sf9_ldr_implicit;    // implicit header, LDR on
-          else       d_whitening_sequence = whitening_sequence_sf9_implicit;        // implicit header, LDR on
-          break;
-        case 10:
-          if (d_ldr) d_whitening_sequence = whitening_sequence_sf10_ldr_implicit;    // implicit header, LDR on
-          else       d_whitening_sequence = whitening_sequence_sf10_implicit;        // implicit header, LDR on
-          break;
-        case 11:
-          if (d_ldr) d_whitening_sequence = whitening_sequence_sf11_ldr_implicit;    // implicit header, LDR on
-          else       d_whitening_sequence = whitening_sequence_sf11_implicit;        // implicit header, LDR on
-          break;
-        case 12:
-          if (d_ldr) d_whitening_sequence = whitening_sequence_sf12_ldr_implicit;    // implicit header, LDR on
-          else       d_whitening_sequence = whitening_sequence_sf12_implicit;        // implicit header, LDR on
-          break;
-        default:
-          std::cerr << "Invalid spreading factor -- this state should never occur." << std::endl;
-          d_whitening_sequence = whitening_sequence_sf8_implicit;   // TODO actually handle this
-          break;
+        std::cerr << "Invalid spreading factor -- this state should never occur." << std::endl;
       }
 
       if (d_header)
@@ -153,11 +135,11 @@ namespace gr {
     }
 
     void
-    decode_impl::whiten(std::vector<unsigned short> &symbols)
+    decode_impl::whiten(std::vector<unsigned char> &codewords)
     {
-      for (int i = 0; (i < symbols.size()) && (i < whitening_sequence_length); i++)
+      for (int i = 0; (i < codewords.size()) && (i < whitening_sequence_length); i++)
       {
-        symbols[i] = (symbols[i] ^ d_whitening_sequence[i]);
+        codewords[i] ^= d_whitening_sequence[i];
       }
     }
 
@@ -180,193 +162,67 @@ namespace gr {
                               unsigned char ppm,
                               unsigned char rdd)
     {
-      int symbol_offset = 0;
-      int bit_offset    = 0;
-      int bit_idx       = 0;
-      unsigned char block[INTERLEAVER_BLOCK_SIZE];    // maximum bit-width is 8, should RDD==4
+      const uint32_t bits_per_word = rdd + 4;
+      const uint32_t offset_start  = ppm - 1u;
 
-      // Swap MSBs of each symbol within buffer (one of LoRa's quirks)
-      for (int symbol_idx = 0; symbol_idx < symbols.size(); symbol_idx++)
-      {
-        symbols[symbol_idx] = ( (symbols[symbol_idx] &  (0x1 << (ppm-1))) >> 1 |
-                                (symbols[symbol_idx] &  (0x1 << (ppm-2))) << 1 |
-                                (symbols[symbol_idx] & ((0x1 << (ppm-2)) - 1))
-                              );
-      }
+      for (uint32_t start_idx = 0; start_idx < symbols.size(); start_idx += bits_per_word) {
+        std::vector<uint8_t> block(ppm, 0u);
+        for (uint32_t i = 0; i < bits_per_word; i++) {
+          const uint32_t word = gr::lora::rotl(symbols[start_idx + i], i, ppm);
 
-      // Block interleaver: de-interleave RDD+4 symbols at a time into PPM codewords
-      for (int block_count = 0; block_count < symbols.size()/(4+rdd); block_count++)
-      {
-        memset(block, 0, INTERLEAVER_BLOCK_SIZE*sizeof(unsigned char));
-        bit_idx = 0;
-        bit_offset = 0;
-
-        // Iterate through each bit in the interleaver block
-        for (int bitcount = 0; bitcount < ppm*(4+rdd); bitcount++)
-        {
-              // Symbol indexing                                     // Diagonal pattern mask
-          if (symbols[(bitcount % (4+rdd)) + (4+rdd)*block_count] & ((0x1 << (ppm-1)) >> ((bit_idx + bit_offset) % ppm)))
-          {
-            block[bitcount / (4+rdd)] |= 0x1 << (bitcount % (4+rdd));   // integer divison in C++ is defined to floor
-          }
-
-          // bit_idx walks through diagonal interleaving pattern, bit_offset adjusts offset starting point for each codeword
-          if (bitcount % (4+rdd) == (4+rdd-1))
-          {
-            bit_idx = 0;
-            bit_offset++;
-          }
-          else
-          {
-            bit_idx++;
+          for (uint32_t j = (1u << offset_start), x = offset_start; j; j >>= 1u, x--) {
+            block[x] |= !!(word & j) << i;
           }
         }
 
-        // Post-process de-interleaved codewords
-        for (int cw_idx = 0; cw_idx < ppm; cw_idx++)
-        {
-          // Put bits into traditional Hamming order
-          switch (rdd)
-          {
-            case 4:
-              block[cw_idx] = (block[cw_idx] & 128) | (block[cw_idx] & 64) | (block[cw_idx] & 32) >> 5 | (block[cw_idx] & 16) | (block[cw_idx] & 8) << 2 | (block[cw_idx] & 4) << 1 | (block[cw_idx] & 2) << 1 | (block[cw_idx] & 1) << 1;
-              break;
-
-            case 3:
-              block[cw_idx] = (block[cw_idx] & 64) | (block[cw_idx] & 32) | (block[cw_idx] & 16) >> 1 | (block[cw_idx] & 8) << 1 | (block[cw_idx] & 4) | (block[cw_idx] & 2) | (block[cw_idx] & 1);
-              break;
-
-            default:
-              break;
-          }
-
-          // Mask
-          block[cw_idx] = block[cw_idx] & ((1 << (4+rdd)) - 1);
-        }
-        
-        // Append deinterleaved codewords to codeword buffer, rearranging into proper order
-        if (ppm == 8)
-        {
-          codewords.push_back(block[6]);
-          codewords.push_back(block[7]);
-          codewords.push_back(block[4]);
-          codewords.push_back(block[5]);
-        }
-        else if (ppm == 7)
-        {
-          codewords.push_back(block[6]);
-          codewords.push_back(block[4]);
-          codewords.push_back(block[5]);
-        }
-        else if (ppm == 6)
-        {
-          codewords.push_back(block[4]);
-          codewords.push_back(block[5]);
-        }
-        else if (ppm == 5)
-        {
-          codewords.push_back(block[4]);
-        }
-        codewords.push_back(block[2]);
-        codewords.push_back(block[3]);
-        codewords.push_back(block[0]);
-        codewords.push_back(block[1]);
+        codewords.insert(codewords.end(), block.begin(), block.end());
       }
     }
-
-
 
     void
     decode_impl::hamming_decode(std::vector<unsigned char> &codewords,
                                 std::vector<unsigned char> &bytes,
                                 unsigned char rdd)
     {
-      unsigned char p1, p2, p4, p8;
-      unsigned char mask;
-      unsigned int num_set_bits;
-      unsigned int num_set_flags;
-      int error_pos = 0;
-
-      for (int i = 0; i < codewords.size(); i++)
+      unsigned char p1, p2, p3;
+      for (uint32_t i = 0; i < codewords.size(); i++)
       {
-        switch (rdd) {
-          case 4:
-            p8 = parity(codewords[i], mask = (unsigned char)HAMMING_P8_BITMASK);
-          case 3:
-            p4 = parity(codewords[i], mask = (unsigned char)HAMMING_P4_BITMASK >> (4 - rdd));
-          case 2:
-            p2 = parity(codewords[i], mask = (unsigned char)HAMMING_P2_BITMASK >> (4 - rdd));
-          case 1:
-            p1 = parity(codewords[i], mask = (unsigned char)HAMMING_P1_BITMASK >> (4 - rdd));
-            break;
-        }
-
-        error_pos = -1;
-        if (p1 != 0) error_pos += 1;
-        if (p2 != 0) error_pos += 2;
-        if (p4 != 0) error_pos += 4;
-
-        num_set_flags = p1 + p2 + p4;
-
-        // Hamming(4+rdd,4) is only corrective if rdd >= 3
-        if (rdd > 2)
+        // first (sf-2) nibbles use CR=4/8
+        if (rdd > 2 || i < d_sf - 2) // Hamming(8,4) or Hamming(7,4)
         {
-          num_set_bits = 0;
-          for (int bit_idx = 0; bit_idx < 8; bit_idx++)
+          p1 = parity(codewords[i], (unsigned char)HAMMING_P1_BITMASK);
+          p2 = parity(codewords[i], (unsigned char)HAMMING_P2_BITMASK);
+          p3 = parity(codewords[i], (unsigned char)HAMMING_P3_BITMASK);
+          // p1 covers d1 d2 d4
+          // p2 covers d1 d3 d4
+          // p3 covers d2 d3 d4
+          switch ((p3<<2) | (p2<<1) | p1)
           {
-            if (codewords[i] & (0x01 << bit_idx))
-            {
-              num_set_bits++;
-            }
-          }
-
-          if (error_pos >= 0 && num_set_bits < 6 && num_set_bits > 2)
-          {
-            codewords[i] ^= (0x80 >> (4-rdd)) >> error_pos;
-          } 
-
-          num_set_bits = 0;
-          for (int bit_idx = 0; bit_idx < 8; bit_idx++)
-          {
-            if (codewords[i] & (0x01 << bit_idx))
-            {
-              num_set_bits++;
-            }
-          }
-
-          // if (rdd == 4)
-          // {
-          //   if (num_set_bits < 3)
-          //   {
-          //     codewords[i] = 0;
-          //   }
-          //   else if (num_set_bits > 5)
-          //   {
-          //     codewords[i] = 0xFF;
-          //   }
-          // }
-        }
-
-        switch (rdd)
-        {
-          case 1:
-          case 2:
-            codewords[i] = codewords[i] & 0x0F;
-            break;
           case 3:
-            codewords[i] = (((codewords[i] & 0x10) >> 1) | \
-                            ((codewords[i] & 0x04))      | \
-                            ((codewords[i] & 0x02))      | \
-                            ((codewords[i] & 0x01))) & 0x0F;
+            // p3p2p1 = 011, wrong d1
+            codewords[i] ^= HAMMING_D1_BITMASK;
             break;
-          case 4:
-            codewords[i] = (((codewords[i] & 0x20) >> 2) | \
-                            ((codewords[i] & 0x08) >> 1) | \
-                            ((codewords[i] & 0x04) >> 1) | \
-                            ((codewords[i] & 0x02) >> 1)) & 0x0F;
-            break;
-        }
 
+          case 5:
+            // p3p2p1 = 101, wrong d2
+            codewords[i] ^= HAMMING_D2_BITMASK;
+            break;
+
+          case 6:
+            // p3p2p1 = 110, wrong d3
+            codewords[i] ^= HAMMING_D3_BITMASK;
+            break;
+
+          case 7:
+            // p3p2p1 = 111, wrong d4
+            codewords[i] ^= HAMMING_D4_BITMASK;
+            break;
+          
+          default:
+            // no error, parity error or more than one bit error
+            break;
+          }
+        }
         bytes.push_back(codewords[i] & 0x0F);
       }
     }
@@ -389,12 +245,12 @@ namespace gr {
     void
     decode_impl::print_payload(std::vector<unsigned char> &payload)
     {
-        std::cout << "Received LoRa packet (hex): ";
-        for (int i = 0; i < payload.size(); i++)
-        {
-          std::cout << std::hex << (unsigned int)payload[i] << " ";
-        }
-        std::cout << std::endl;
+      std::cout << "Received LoRa packet (hex): ";
+      for (int i = 0; i < payload.size(); i++)
+      {
+        std::cout << std::hex << (unsigned int)payload[i] << " ";
+      }
+      std::cout << std::endl;
     }
 
     void
@@ -428,18 +284,48 @@ namespace gr {
       std::vector<unsigned short> symbols_in;
       std::vector<unsigned short> header_symbols_in;
       std::vector<unsigned short> payload_symbols_in;
-      std::vector<unsigned char> header_codewords;
-      std::vector<unsigned char> payload_codewords;
-      std::vector<unsigned char> header_bytes;
-      std::vector<unsigned char> payload_bytes;
+      std::vector<unsigned char> codewords;
+      std::vector<unsigned char> nibbles;
       std::vector<unsigned char> combined_bytes;
 
+      short bin_offset = 0;
+      unsigned short last_rem;
+      unsigned short this_rem;
+      bool is_first = true;
+
       symbols_in.clear();
-      for (int i = 0; i < pkt_len; i++) symbols_in.push_back(symbols_v[i]);
+
+      for (int i = 0; i < pkt_len; i++)
+      {
+        unsigned short v = symbols_v[i];
+        if (i < 8)
+        {
+          v = v & ((1<<(d_sf-2))-1);
+        }
+        // if low data rate optimization is on, give entire packet the header treatment of ppm == SF-2
+        else if (d_ldr)
+        {
+          if (is_first)
+          {
+            last_rem = v % 4;
+            is_first = false;
+          }
+          this_rem = v % 4;
+          // compensate bin drift
+          if ((4 + this_rem - last_rem) % 4 == 1) bin_offset -= 1;
+          else if ((4 + this_rem - last_rem) % 4 == 3) bin_offset += 1;
+          last_rem = this_rem;
+          v = (v + (1<<d_sf) + bin_offset) % (1<<d_sf);
+          v = v / 4;
+        }
+        else
+        {
+          v = (v + (1<<d_sf) - 1) % (1<<d_sf);
+        }
+        symbols_in.push_back( v );
+      }
 
       to_gray(symbols_in);
-#if 1 // Disable this #if to derive the whitening sequence
-      whiten(symbols_in);
 
       for (int i = 0; (i < symbols_in.size()) && (i < 8); i++) header_symbols_in.push_back(symbols_in[i]);
       for (int i = 8;  i < symbols_in.size()            ; i++) payload_symbols_in.push_back(symbols_in[i]);
@@ -456,55 +342,54 @@ namespace gr {
 
       // Decode header
       // First 8 symbols are always sent at ppm=d_sf-2, rdd=4 (code rate 4/8), regardless of header mode
-      deinterleave(header_symbols_in, header_codewords, d_sf-2, 4);
-      #if DEBUG_OUTPUT
-        std::cout << "deinterleaved header" << std::endl;
-        print_bitwise_u8(header_codewords);
-      #endif
-
-      hamming_decode(header_codewords, header_bytes, 4);
+      deinterleave(header_symbols_in, codewords, d_sf-2, 4);
 
       // Decode payload
       // Remaining symbols are at ppm=d_sf, unless sent at the low data rate, in which case ppm=d_sf-2
-      deinterleave(payload_symbols_in, payload_codewords, d_ldr ? (d_sf-2) : d_sf, d_cr);
+      deinterleave(payload_symbols_in, codewords, d_ldr ? (d_sf-2) : d_sf, d_cr);
       #if DEBUG_OUTPUT
-        std::cout << "deinterleaved payload" << std::endl;
-        print_bitwise_u8(payload_codewords);
+        std::cout << "deinterleaved codewords" << std::endl;
+        print_bitwise_u8(codewords);
       #endif
 
-      hamming_decode(payload_codewords, payload_bytes, d_cr);
+#if 1 // Disable this #if to derive the whitening sequence
+
+      whiten(codewords);
       #if DEBUG_OUTPUT
-        std::cout << "payload data" << std::endl;
-        print_bitwise_u8(payload_bytes);
+        std::cout << "dewhitened codewords" << std::endl;
+        print_bitwise_u8(codewords);
       #endif
 
-      // Combine header and payload vectors by interleaving data nybbles
-      header_bytes.insert(header_bytes.end(), payload_bytes.begin(), payload_bytes.end());
-      unsigned int i = 0;
-      for (i = 0; i < header_bytes.size(); i++)
+      hamming_decode(codewords, nibbles, d_cr);
+      for (uint32_t i = 0; i < codewords.size(); i++)
       {
         if (i%2 == 0)
         {
-          combined_bytes.push_back((header_bytes[i] << 4) & 0xF0);
+          combined_bytes.push_back(nibbles[i] & 0x0F);
         }
         else
         {
-          combined_bytes[i/2] |= header_bytes[i] & 0x0F;
+          combined_bytes[i/2] |= (nibbles[i] << 4) & 0xF0;
         }
       }
+
+      #if DEBUG_OUTPUT
+        std::cout << "data" << std::endl;
+        print_bitwise_u8(combined_bytes);
+      #endif
 
       pmt::pmt_t output = pmt::init_u8vector(combined_bytes.size(), combined_bytes);
 
 #else // Whitening sequence derivation
 
-      for (int i = 0; i < symbols_in.size(); i++)
+      for (int i = 0; i < codewords.size(); i++)
       {
-        std::cout << ", " << std::bitset<16>(symbols_in[i]);
+        std::cout << ", " << std::bitset<8>(codewords[i]);
       }
       std::cout << std::endl;
-      std::cout << "Length of above: " << symbols_in.size() << std::endl;
+      std::cout << "Length of above: " << codewords.size() << std::endl;
 
-      pmt::pmt_t output = pmt::init_u16vector(symbols_in.size(), symbols_in);
+      pmt::pmt_t output = pmt::init_u8vector(codewords.size(), codewords);
 
 #endif
 

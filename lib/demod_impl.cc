@@ -504,14 +504,7 @@ namespace gr {
           #if DEBUG >= DEBUG_INFO
             std::cout << "MIDX: " << tmp_idx << ", MV: " << max_val << std::endl;
           #endif
-          if (d_ldr)  // if low data rate optimization is on, give entire packet the header treatment of ppm == SF-2
-          {
-            d_symbols.push_back( tmp_idx / 4 + ((tmp_idx % 4 > 2) ? 1 : 0) );
-          }
-          else
-          {
-            d_symbols.push_back( tmp_idx );
-          }
+          d_symbols.push_back( tmp_idx );
         }
 
         break;

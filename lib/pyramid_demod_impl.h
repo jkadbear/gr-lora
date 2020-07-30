@@ -24,16 +24,54 @@
 #include <cmath>
 #include <cstdlib>
 #include <vector>
+#include <deque>
 #include <queue>
 #include <complex>
 #include <fstream>
+#include <limits>
 #include <gnuradio/fft/fft.h>
 #include <gnuradio/fft/window.h>
 #include <volk/volk.h>
 #include <lora/pyramid_demod.h>
+#include "utilities.h"
 
 namespace gr {
   namespace lora {
+    enum symbol_type {
+      SYMBOL_PREAMBLE,
+      SYMBOL_DATA,
+      SYMBOL_BROKEN_DATA,
+    };
+
+    struct peak {
+      unsigned int     ts;     // timestamp
+      unsigned int     bin;    // peak position bin
+      float            h;      // peak height
+      peak(unsigned int ts, unsigned int bin, float h)
+        : ts(ts), bin(bin), h(h)
+      {}
+    };
+
+    struct bin_track_id {
+      unsigned int     bin;           // peak bin
+      unsigned short   track_id;      // index to reference peak_track
+      bool             updated;       // whether a peak tracking process is over
+      bin_track_id(unsigned int bin, unsigned short track_id, bool updated)
+        : bin(bin), track_id(track_id), updated(updated)
+      {}
+      // bin_track_id(bin_track_id && other)
+      //   : bin(other.bin), track_id(other.track_id), updated(other.updated)
+      // {}
+      // bin_track_id& operator=(const bin_track_id & other) = default;
+    };
+
+    struct packet_state {
+      unsigned short   packet_id;     // index to reference packet list
+      short   ttl;           // time to live
+      packet_state(unsigned short packet_id, unsigned short ttl)
+        : packet_id(packet_id), ttl(ttl)
+      {}
+    };
 
     class pyramid_demod_impl : public pyramid_demod
     {
@@ -48,10 +86,13 @@ namespace gr {
       unsigned short  d_fft_size_factor;
       unsigned int    d_fft_size;
       unsigned short  d_overlaps;
+      short           d_ttl;
+      unsigned short  d_bin_tolerance;
       unsigned short  d_offset;
       unsigned short  d_p;
       unsigned int    d_num_samples;
-      unsigned int    d_bin_len;
+      unsigned int    d_bin_size;
+      unsigned short  d_num_preamble;
 
       float           d_cfo;
       float           d_power;
@@ -63,6 +104,15 @@ namespace gr {
       std::vector<unsigned int>  d_argmax_history;
       std::vector<unsigned short>  d_sfd_history;
       unsigned short  d_sync_recovery_counter;
+
+      unsigned int    d_bin_ref;
+      unsigned int    d_ts_ref;
+      std::vector<std::vector<peak>>        d_track;
+      std::vector<bin_track_id>             d_bin_track_id_list;
+      std::deque<unsigned short>            d_track_id_pool;
+      std::vector<std::vector<peak>>        d_packet;
+      std::vector<packet_state>             d_packet_state_list;
+      std::deque<unsigned short>            d_packet_id_pool;
 
       fft::fft_complex   *d_fft;
       std::vector<float> d_window;
@@ -87,8 +137,13 @@ namespace gr {
       unsigned short argmax(gr_complex *fft_result, bool update_squelch);
       unsigned int argmax_32f(float *fft_result, bool update_squelch, float *max_val_p);
 
+      void find_and_add_peak(float *fft_mag, float *fft_mag_w);
+      symbol_type get_central_peak(unsigned short track_id, peak & pk);
+      bool add_symbol_to_packet(peak & pk, symbol_type st);
+      void check_and_update_track();
+
       // Where all the action really happens
-      void forecast (int noutput_items, gr_vector_int &ninput_items_required);
+      void forecast(int noutput_items, gr_vector_int &ninput_items_required);
 
       int general_work(int noutput_items,
            gr_vector_int &ninput_items,

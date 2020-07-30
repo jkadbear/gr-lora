@@ -28,9 +28,15 @@
 #define DEMOD_HISTORY_DEPTH        3
 #define REQUIRED_PREAMBLE_CHIRPS   4
 #define REQUIRED_SFD_CHIRPS        2
-#define LORA_SFD_TOLERANCE         1
 #define LORA_PREAMBLE_TOLERANCE    1
 #define DEMOD_SYNC_RECOVERY_COUNT  (8-REQUIRED_PREAMBLE_CHIRPS)+(2-REQUIRED_SFD_CHIRPS)+8
+
+#define TIMESTAMP_MOD              (1 << 28) // MAGIC
+
+#define APEX_ALGORITHM_RATIO                  0
+#define APEX_ALGORITHM_LINEAR_REGRESSION      1
+#define APEX_ALGORITHM_SEGMENT                2
+#define APEX_ALGORITHM                        APEX_ALGORITHM_SEGMENT
 
 namespace gr {
   namespace lora {

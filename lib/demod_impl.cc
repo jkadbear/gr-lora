@@ -477,11 +477,11 @@ namespace gr {
          * Dividing by d_fft_size_factor reduces symbols to [0:(2**sf)-1] range
          * Dividing by 4 to further reduce symbol set to [0:(2**(sf-2)-1)], since header is sent at SF-2
          */
-        tmp_idx = ((unsigned short) (d_num_symbols + (max_index - d_cfo)/d_fft_size_factor)) % d_num_symbols;
+        tmp_idx = ((unsigned short) round(d_num_symbols + (max_index - d_cfo)/d_fft_size_factor)) % d_num_symbols;
         #if DEBUG >= DEBUG_INFO
           std::cout << "HEADER MIDX: " << tmp_idx << ", MV: " << max_val << std::endl;
         #endif
-        d_symbols.push_back( tmp_idx / 4 + ((tmp_idx % 4 > 2) ? 1 : 0) );
+        d_symbols.push_back( tmp_idx );
 
         break;
 

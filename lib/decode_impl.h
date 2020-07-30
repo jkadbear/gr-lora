@@ -39,6 +39,8 @@ namespace gr {
 
       unsigned char d_sf;
       unsigned char d_cr;
+      unsigned char d_payload_len;
+      bool          d_crc;
       bool          d_ldr;
       bool          d_header;
 
@@ -53,6 +55,8 @@ namespace gr {
       decode_impl(  short spreading_factor,
                     short code_rate,
                     bool  low_data_rate,
+                    bool  crc,
+                    short payload_len,
                     bool  header);
       ~decode_impl();
 

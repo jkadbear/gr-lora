@@ -55,10 +55,12 @@ namespace gr {
     decode::make(   short spreading_factor,
                     short code_rate,
                     bool  low_data_rate,
+                    bool  crc,
+                    short payload_len,
                     bool  header)
     {
       return gnuradio::get_initial_sptr
-        (new decode_impl(spreading_factor, code_rate, low_data_rate, header));
+        (new decode_impl(spreading_factor, code_rate, low_data_rate, crc, payload_len, header));
     }
 
     /*
@@ -67,6 +69,8 @@ namespace gr {
     decode_impl::decode_impl( short spreading_factor,
                               short code_rate,
                               bool  low_data_rate,
+                              bool  crc,
+                              short payload_len,
                               bool  header)
       : gr::block("decode",
               gr::io_signature::make(0, 0, 0),
@@ -74,6 +78,8 @@ namespace gr {
         d_sf(spreading_factor),
         d_cr(code_rate),
         d_ldr(low_data_rate),
+        d_crc(crc),
+        d_payload_len(payload_len),
         d_header(header)
     {
       assert((d_sf > 5) && (d_sf < 13));
@@ -92,12 +98,6 @@ namespace gr {
       if (d_sf < 6 | d_sf > 12)
       {
         std::cerr << "Invalid spreading factor -- this state should never occur." << std::endl;
-      }
-
-      if (d_header)
-      {
-        std::cout << "Warning: Explicit header mode is not yet supported." << std::endl;
-        std::cout << "         Using an implicit whitening sequence: demodulation will work correctly; decoding will not." << std::endl;
       }
 
       d_interleaver_size = d_sf;
@@ -137,9 +137,10 @@ namespace gr {
     void
     decode_impl::whiten(std::vector<unsigned char> &codewords)
     {
-      for (int i = 0; (i < codewords.size()) && (i < whitening_sequence_length); i++)
+      int offset = d_header ? 5 : 0;
+      for (int i = 0; (i+offset < codewords.size()) && (i < whitening_sequence_length); i++)
       {
-        codewords[i] ^= d_whitening_sequence[i];
+        codewords[i+offset] ^= d_whitening_sequence[i];
       }
     }
 
@@ -291,36 +292,35 @@ namespace gr {
       short bin_offset = 0;
       unsigned short last_rem;
       unsigned short this_rem;
-      bool is_first = true;
 
       symbols_in.clear();
 
       for (int i = 0; i < pkt_len; i++)
       {
         unsigned short v = symbols_v[i];
-        if (i < 8)
+
+        if (d_ldr)
         {
-          v = v & ((1<<(d_sf-2))-1);
-        }
-        // if low data rate optimization is on, give entire packet the header treatment of ppm == SF-2
-        else if (d_ldr)
-        {
-          if (is_first)
+          if (i == 0)
           {
             last_rem = v % 4;
-            is_first = false;
           }
           this_rem = v % 4;
           // compensate bin drift
-          if ((4 + this_rem - last_rem) % 4 == 1) bin_offset -= 1;
-          else if ((4 + this_rem - last_rem) % 4 == 3) bin_offset += 1;
+          if (pos_mod(this_rem - last_rem, 4) == 1) bin_offset -= 1;
+          else if ((this_rem - last_rem, 4) == 3) bin_offset += 1;
           last_rem = this_rem;
-          v = (v + (1<<d_sf) + bin_offset) % (1<<d_sf);
+          v = pos_mod(v + bin_offset, 1<<d_sf);
+        }
+
+        // if low data rate optimization is on, give entire packet the header treatment of ppm == SF-2
+        if (i < 8 || d_ldr)
+        {
           v = v / 4;
         }
         else
         {
-          v = (v + (1<<d_sf) - 1) % (1<<d_sf);
+          v = pos_mod(v - 1, 1<<d_sf);
         }
         symbols_in.push_back( v );
       }
@@ -343,6 +343,18 @@ namespace gr {
       // Decode header
       // First 8 symbols are always sent at ppm=d_sf-2, rdd=4 (code rate 4/8), regardless of header mode
       deinterleave(header_symbols_in, codewords, d_sf-2, 4);
+      if (d_header) // Explicit Header Mode
+      {
+        hamming_decode(codewords, nibbles, 4);
+        d_payload_len = (nibbles[0] << 4) | nibbles[1];
+        d_crc = nibbles[2] & 1;
+        d_cr = nibbles[2] >> 1;
+        uint8_t checksum = (nibbles[3] << 4) | nibbles[4];
+        if (checksum != header_checksum(d_payload_len, nibbles[2] & 0xF)) 
+        {
+          return; // TODO report broken packet
+        }
+      }
 
       // Decode payload
       // Remaining symbols are at ppm=d_sf, unless sent at the low data rate, in which case ppm=d_sf-2
@@ -360,16 +372,25 @@ namespace gr {
         print_bitwise_u8(codewords);
       #endif
 
+      // header has 2.5 bytes, zero-padding to 3 bytes
+      if (d_header) codewords.insert(codewords.begin()+5, 0);
+
+      nibbles.clear();
       hamming_decode(codewords, nibbles, d_cr);
-      for (uint32_t i = 0; i < codewords.size(); i++)
+      size_t min_len = d_payload_len * 2 + (d_header ? 6 : 0) + (d_crc ? 4 : 0);
+      if (nibbles.size() < min_len)
       {
-        if (i%2 == 0)
+        return; // TODO report broken packet
+      }
+      for (uint32_t i = 0; i < min_len; i+=2)
+      {
+        if (d_header && i < 6)
         {
-          combined_bytes.push_back(nibbles[i] & 0x0F);
+          combined_bytes.push_back((nibbles[i] << 4) | nibbles[i+1]);
         }
         else
         {
-          combined_bytes[i/2] |= (nibbles[i] << 4) & 0xF0;
+          combined_bytes.push_back((nibbles[i+1] << 4) | nibbles[i]);
         }
       }
 
@@ -377,6 +398,14 @@ namespace gr {
         std::cout << "data" << std::endl;
         print_bitwise_u8(combined_bytes);
       #endif
+
+      // CRC checksum
+      if (d_crc)
+      {
+        int offset = d_header ? 3 : 0;
+        uint16_t checksum = combined_bytes[d_payload_len+offset] | (combined_bytes[d_payload_len+offset+1] << 8);
+        combined_bytes.push_back(checksum == data_checksum(&combined_bytes[offset], d_payload_len));
+      }
 
       pmt::pmt_t output = pmt::init_u8vector(combined_bytes.size(), combined_bytes);
 

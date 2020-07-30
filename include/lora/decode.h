@@ -52,6 +52,8 @@ namespace gr {
       static sptr make( short spreading_factor,
                         short code_rate,
                         bool  low_data_rate,
+                        bool  crc,
+                        short payload_len,
                         bool  header);
     };
 

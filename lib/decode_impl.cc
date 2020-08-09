@@ -308,7 +308,7 @@ namespace gr {
           this_rem = v % 4;
           // compensate bin drift
           if (pos_mod(this_rem - last_rem, 4) == 1) bin_offset -= 1;
-          else if ((this_rem - last_rem, 4) == 3) bin_offset += 1;
+          else if (pos_mod(this_rem - last_rem, 4) == 3) bin_offset += 1;
           last_rem = this_rem;
           v = pos_mod(v + bin_offset, 1<<d_sf);
         }
@@ -377,7 +377,7 @@ namespace gr {
 
       nibbles.clear();
       hamming_decode(codewords, nibbles, d_cr);
-      size_t min_len = d_payload_len * 2 + (d_header ? 6 : 0) + (d_crc ? 4 : 0);
+      size_t min_len = d_payload_len * 2 + d_header * 6 + d_crc * 4;
       if (nibbles.size() < min_len)
       {
         return; // TODO report broken packet

@@ -137,8 +137,9 @@ namespace gr {
     void
     decode_impl::whiten(std::vector<unsigned char> &codewords)
     {
-      int offset = d_header ? 5 : 0;
-      for (int i = 0; (i+offset < codewords.size()) && (i < whitening_sequence_length); i++)
+      int offset = d_header ? 3 : 0;
+      int crc_offset = d_crc ? 2 : 0;
+      for (int i = 0; i + offset < codewords.size() - crc_offset && i < whitening_sequence_length; i++)
       {
         codewords[i+offset] ^= d_whitening_sequence[i];
       }
@@ -164,14 +165,13 @@ namespace gr {
                               unsigned char rdd)
     {
       const uint32_t bits_per_word = rdd + 4;
-      const uint32_t offset_start  = ppm - 1u;
 
       for (uint32_t start_idx = 0; start_idx < symbols.size(); start_idx += bits_per_word) {
         std::vector<uint8_t> block(ppm, 0u);
         for (uint32_t i = 0; i < bits_per_word; i++) {
           const uint32_t word = gr::lora::rotl(symbols[start_idx + i], i, ppm);
 
-          for (uint32_t j = (1u << offset_start), x = offset_start; j; j >>= 1u, x--) {
+          for (uint32_t j = (1u << (ppm - 1)), x = ppm - 1; j; j >>= 1u, x--) {
             block[x] |= !!(word & j) << i;
           }
         }
@@ -334,9 +334,9 @@ namespace gr {
         std::cout << "header syms len " << header_symbols_in.size() << std::endl;
         std::cout << "payload syms len " << payload_symbols_in.size() << std::endl;
 
-        std::cout << "header dewhitened symbols" << std::endl;
+        std::cout << "header symbols" << std::endl;
         print_bitwise_u16(header_symbols_in);
-        std::cout << "payload dewhitened symbols" << std::endl;
+        std::cout << "payload symbols" << std::endl;
         print_bitwise_u16(payload_symbols_in);
       #endif
 
@@ -364,14 +364,6 @@ namespace gr {
         print_bitwise_u8(codewords);
       #endif
 
-#if 1 // Disable this #if to derive the whitening sequence
-
-      whiten(codewords);
-      #if DEBUG_OUTPUT
-        std::cout << "dewhitened codewords" << std::endl;
-        print_bitwise_u8(codewords);
-      #endif
-
       // header has 2.5 bytes, zero-padding to 3 bytes
       if (d_header) codewords.insert(codewords.begin()+5, 0);
 
@@ -395,7 +387,15 @@ namespace gr {
       }
 
       #if DEBUG_OUTPUT
-        std::cout << "data" << std::endl;
+        std::cout << "bytes before dewhitening" << std::endl;
+        print_bitwise_u8(combined_bytes);
+      #endif
+
+#if 1 // Disable this #if to derive the whitening sequence
+
+      whiten(combined_bytes);
+      #if DEBUG_OUTPUT
+        std::cout << "dewhitened codewords" << std::endl;
         print_bitwise_u8(combined_bytes);
       #endif
 
@@ -411,14 +411,14 @@ namespace gr {
 
 #else // Whitening sequence derivation
 
-      for (int i = 0; i < codewords.size(); i++)
+      for (int i = 0; i < combined_bytes.size(); i++)
       {
-        std::cout << ", " << std::bitset<8>(codewords[i]);
+        std::cout << ", " << std::bitset<8>(combined_bytes[i]);
       }
       std::cout << std::endl;
-      std::cout << "Length of above: " << codewords.size() << std::endl;
+      std::cout << "Length of above: " << combined_bytes.size() << std::endl;
 
-      pmt::pmt_t output = pmt::init_u8vector(codewords.size(), codewords);
+      pmt::pmt_t output = pmt::init_u8vector(combined_bytes.size(), combined_bytes);
 
 #endif
 

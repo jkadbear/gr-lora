@@ -23,7 +23,9 @@
 
 #include <volk/volk.h>
 #include <bitset>
+#include <cmath>
 #include <lora/encode.h>
+#include "utilities.h"
 
 namespace gr {
   namespace lora {
@@ -31,13 +33,14 @@ namespace gr {
     class encode_impl : public encode
     {
      private:
-      const unsigned short *d_whitening_sequence;
+      const uint8_t *d_whitening_sequence;
 
       pmt::pmt_t d_in_port;
       pmt::pmt_t d_out_port;
       
       unsigned char d_sf;
       unsigned char d_cr;
+      bool          d_crc;
       bool          d_ldr;
       bool          d_header;
 
@@ -47,15 +50,18 @@ namespace gr {
      public:
       encode_impl(  short spreading_factor,
                     short code_rate,
+                    bool  crc,
                     bool  low_data_rate,
                     bool  header);
       ~encode_impl();
 
+      void gen_header(std::vector<unsigned char> &nibbheader_nibblesles, uint8_t payload_len);
+      uint16_t calc_sym_num(uint8_t payload_len);
       void to_gray(std::vector<unsigned short> &symbols);
       void from_gray(std::vector<unsigned short> &symbols);
-      void whiten(std::vector<unsigned short> &symbols);
-      void interleave(std::vector<unsigned char> &codewords, std::vector<unsigned short> &symbols, unsigned char ppm, unsigned char rdd);
-      void hamming_encode(std::vector<unsigned char> &nybbles, std::vector<unsigned char> &codewords, unsigned char rdd);
+      void whiten(std::vector<unsigned char> &bytes, uint8_t len);
+      void interleave(std::vector<unsigned char> &codewords, std::vector<unsigned short> &symbols);
+      void hamming_encode(std::vector<unsigned char> &nibbles, std::vector<unsigned char> &codewords);
       unsigned char parity(unsigned char c, unsigned char bitmask);
       void print_payload(std::vector<unsigned char> &payload);
 

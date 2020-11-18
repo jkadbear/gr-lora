@@ -25,14 +25,14 @@ namespace gr {
   namespace lora {
 
     /**
-     *  \brief  Python-style modulo, (i % n) >= 0
+     *  \brief  Python-style modulo, (x % n) >= 0
      *
      *  \param  x
      *          dividend
      *  \param  n
      *          divisor
      */
-    inline unsigned int pos_mod(int x, unsigned int n)
+    inline unsigned int mod(int x, unsigned int n)
     {
       return ((x % n) + n) % n;
     }
@@ -50,76 +50,60 @@ namespace gr {
      *          <BR>e.g. only 6 bits in use => size = 6, and all bits higher than (1 << size-1) will be zeroed.
      */
     inline uint32_t rotl(uint32_t bits, uint32_t count = 1u, const uint32_t size = 8u) {
-        const uint32_t len_mask = (1u << size) - 1u;
+      const uint32_t len_mask = (1u << size) - 1u;
 
-        count %= size;      // Limit bit rotate count to size
-        bits  &= len_mask;  // Limit given bits to size
+      count %= size;      // Limit bit rotate count to size
+      bits  &= len_mask;  // Limit given bits to size
 
-        return ((bits << count) & len_mask) | (bits >> (size - count));
+      return ((bits << count) & len_mask) | (bits >> (size - count));
     }
 
-    inline uint16_t crc16sx(uint16_t crc, const uint16_t poly) {
-        for (int i = 0; i < 8; i++) {
-            if (crc & 0x8000) {
-                crc = (crc << 1) ^ poly;
-            }
-            else {
-                crc <<= 1;
-            }
-        }
-        return crc;
-    }
-
-    inline uint8_t xsum8(uint8_t t) {
-        t ^= t >> 4;
-        t ^= t >> 2;
-        t ^= t >> 1;
-        return (t & 1);
-    }
-
-    /***********************************************************************
-     *  CRC reverse engineered from Sx1272 data stream.
-     *  Modified CCITT crc with masking of the output with an 8bit lfsr
-     **********************************************************************/
     inline uint16_t data_checksum(const uint8_t *data, int length) {
-        uint16_t res = 0;
-        uint8_t v = 0xff;
-        uint16_t crc = 0;
-        for (int i = 0; i < length; i++) {
-            crc = crc16sx(res, 0x1021);
-            v = xsum8(v & 0xB8) | (v << 1);
-            res = crc ^ data[i];
+      uint16_t crc = 0;
+      for (int j = 0; j < length - 2; j++)
+      {
+        uint8_t new_byte = data[j];
+        for (int i = 0; i < 8; i++) {
+          if (((crc & 0x8000) >> 8) ^ (new_byte & 0x80)) {
+            crc = (crc << 1) ^ 0x1021;
+          } else {
+            crc = (crc << 1);
+          }
+          new_byte <<= 1;
         }
-        res ^= v; 
-        v = xsum8(v & 0xB8) | (v << 1);
-        res ^= v << 8;
-        return res;
+      }
+
+      // XOR the obtained CRC with the last 2 data bytes
+      uint16_t x1 = (length >= 1) ? data[length-1]      : 0;
+      uint16_t x2 = (length >= 2) ? data[length-2] << 8 : 0;
+      crc = crc ^ x1 ^ x2;
+      return crc;
     }
 
     inline uint8_t header_checksum(const uint16_t len, const uint8_t cr_crc) {
-        auto a0 = (len >> 4) & 0x1;
-        auto a1 = (len >> 5) & 0x1;
-        auto a2 = (len >> 6) & 0x1;
-        auto a3 = (len >> 7) & 0x1;
+      auto a0 = (len >> 4) & 0x1;
+      auto a1 = (len >> 5) & 0x1;
+      auto a2 = (len >> 6) & 0x1;
+      auto a3 = (len >> 7) & 0x1;
 
-        auto b0 = (len >> 0) & 0x1;
-        auto b1 = (len >> 1) & 0x1;
-        auto b2 = (len >> 2) & 0x1;
-        auto b3 = (len >> 3) & 0x1;
+      auto b0 = (len >> 0) & 0x1;
+      auto b1 = (len >> 1) & 0x1;
+      auto b2 = (len >> 2) & 0x1;
+      auto b3 = (len >> 3) & 0x1;
 
-        auto c0 = (cr_crc >> 0) & 0x1;
-        auto c1 = (cr_crc >> 1) & 0x1;
-        auto c2 = (cr_crc >> 2) & 0x1;
-        auto c3 = (cr_crc >> 3) & 0x1;
+      auto c0 = (cr_crc >> 0) & 0x1;
+      auto c1 = (cr_crc >> 1) & 0x1;
+      auto c2 = (cr_crc >> 2) & 0x1;
+      auto c3 = (cr_crc >> 3) & 0x1;
 
-        uint8_t res;
-        res = (a0 ^ a1 ^ a2 ^ a3) << 4;
-        res |= (a3 ^ b1 ^ b2 ^ b3 ^ c0) << 3;
-        res |= (a2 ^ b0 ^ b3 ^ c1 ^ c3) << 2;
-        res |= (a1 ^ b0 ^ b2 ^ c0 ^ c1 ^ c2) << 1;
-        res |= a0 ^ b1 ^ c0 ^ c1 ^ c2 ^ c3;
+      uint8_t res;
+      res = (a0 ^ a1 ^ a2 ^ a3) << 4;
+      res |= (a3 ^ b1 ^ b2 ^ b3 ^ c0) << 3;
+      res |= (a2 ^ b0 ^ b3 ^ c1 ^ c3) << 2;
+      res |= (a1 ^ b0 ^ b2 ^ c0 ^ c1 ^ c2) << 1;
+      res |= a0 ^ b1 ^ c0 ^ c1 ^ c2 ^ c3;
 
-        return res;
+      return res;
     }
   }
 }

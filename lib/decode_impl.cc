@@ -44,8 +44,6 @@
 #define HAMMING_D3_BITMASK 0x01  // 0b00000001
 #define HAMMING_D4_BITMASK 0x02  // 0b00000010
 
-#define INTERLEAVER_BLOCK_SIZE 12
-
 #define DEBUG_OUTPUT 0
 
 namespace gr {
@@ -170,7 +168,6 @@ namespace gr {
         std::vector<uint8_t> block(ppm, 0u);
         for (uint32_t i = 0; i < bits_per_word; i++) {
           const uint32_t word = gr::lora::rotl(symbols[start_idx + i], i, ppm);
-
           for (uint32_t j = (1u << (ppm - 1)), x = ppm - 1; j; j >>= 1u, x--) {
             block[x] |= !!(word & j) << i;
           }
@@ -307,10 +304,10 @@ namespace gr {
           }
           this_rem = v % 4;
           // compensate bin drift
-          if (pos_mod(this_rem - last_rem, 4) == 1) bin_offset -= 1;
-          else if (pos_mod(this_rem - last_rem, 4) == 3) bin_offset += 1;
+          if (mod(this_rem - last_rem, 4) == 1) bin_offset -= 1;
+          else if (mod(this_rem - last_rem, 4) == 3) bin_offset += 1;
           last_rem = this_rem;
-          v = pos_mod(v + bin_offset, 1<<d_sf);
+          v = mod(v + bin_offset, 1<<d_sf);
         }
 
         // if low data rate optimization is on, give entire packet the header treatment of ppm == SF-2
@@ -320,7 +317,7 @@ namespace gr {
         }
         else
         {
-          v = pos_mod(v - 1, 1<<d_sf);
+          v = mod(v - 1, 1<<d_sf);
         }
         symbols_in.push_back( v );
       }
@@ -350,7 +347,7 @@ namespace gr {
         d_crc = nibbles[2] & 1;
         d_cr = nibbles[2] >> 1;
         uint8_t checksum = (nibbles[3] << 4) | nibbles[4];
-        if (checksum != header_checksum(d_payload_len, nibbles[2] & 0xF)) 
+        if (checksum != header_checksum(d_payload_len, nibbles[2] & 0xF))
         {
           return; // TODO report broken packet
         }

@@ -34,6 +34,7 @@ namespace gr {
      private:
       pmt::pmt_t d_in_port;
       pmt::pmt_t d_out_port;
+      pmt::pmt_t d_header_port;
 
       const unsigned char *d_whitening_sequence;
 
@@ -52,12 +53,12 @@ namespace gr {
       std::vector<unsigned char> d_bytes;
 
      public:
-      decode_impl(  short spreading_factor,
-                    short code_rate,
-                    bool  low_data_rate,
-                    bool  crc,
-                    short payload_len,
-                    bool  header);
+      decode_impl( short spreading_factor,
+                   bool  header,
+                   short payload_len,
+                   short code_rate,
+                   bool  crc,
+                   bool  low_data_rate);
       ~decode_impl();
 
       void to_gray(std::vector<unsigned short> &symbols);
@@ -79,3 +80,4 @@ namespace gr {
 } // namespace gr
 
 #endif /* INCLUDED_LORA_DECODE_IMPL_H */
+

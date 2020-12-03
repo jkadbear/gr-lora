@@ -50,26 +50,26 @@ namespace gr {
   namespace lora {
 
     decode::sptr
-    decode::make(   short spreading_factor,
-                    short code_rate,
-                    bool  low_data_rate,
-                    bool  crc,
-                    short payload_len,
-                    bool  header)
+    decode::make( short spreading_factor,
+                  bool  header,
+                  short payload_len,
+                  short code_rate,
+                  bool  crc,
+                  bool  low_data_rate)
     {
       return gnuradio::get_initial_sptr
-        (new decode_impl(spreading_factor, code_rate, low_data_rate, crc, payload_len, header));
+        (new decode_impl(spreading_factor, header, payload_len, code_rate, crc, low_data_rate));
     }
 
     /*
      * The private constructor
      */
     decode_impl::decode_impl( short spreading_factor,
-                              short code_rate,
-                              bool  low_data_rate,
-                              bool  crc,
+                              bool  header,
                               short payload_len,
-                              bool  header)
+                              short code_rate,
+                              bool  crc,
+                              bool  low_data_rate)
       : gr::block("decode",
               gr::io_signature::make(0, 0, 0),
               gr::io_signature::make(0, 0, 0)),
@@ -86,9 +86,11 @@ namespace gr {
 
       d_in_port = pmt::mp("in");
       d_out_port = pmt::mp("out");
+      d_header_port = pmt::mp("header");
 
       message_port_register_in(d_in_port);
       message_port_register_out(d_out_port);
+      message_port_register_out(d_header_port);
 
       set_msg_handler(d_in_port, boost::bind(&decode_impl::decode, this, _1));
 
@@ -274,6 +276,10 @@ namespace gr {
     void
     decode_impl::decode(pmt::pmt_t msg)
     {
+      pmt::pmt_t not_found = pmt::from_bool(false);
+      const pmt::pmt_t dict = pmt::car(msg);
+      std::string symbol_id = pmt::symbol_to_string(pmt::dict_ref(dict, pmt::intern("id"), not_found));
+
       pmt::pmt_t symbols(pmt::cdr(msg));
 
       size_t pkt_len(0);
@@ -304,20 +310,20 @@ namespace gr {
           }
           this_rem = v % 4;
           // compensate bin drift
-          if (mod(this_rem - last_rem, 4) == 1) bin_offset -= 1;
-          else if (mod(this_rem - last_rem, 4) == 3) bin_offset += 1;
+          if (gr::lora::pmod(this_rem - last_rem, 4) == 1) bin_offset -= 1;
+          else if (gr::lora::pmod(this_rem - last_rem, 4) == 3) bin_offset += 1;
           last_rem = this_rem;
-          v = mod(v + bin_offset, 1<<d_sf);
+          v = gr::lora::pmod(v + bin_offset, 1<<d_sf);
         }
 
-        // if low data rate optimization is on, give entire packet the header treatment of ppm == SF-2
+        // if low data rate optimization is on, the ppm of the entire packet is SF-2
         if (i < 8 || d_ldr)
         {
           v = v / 4;
         }
         else
         {
-          v = mod(v - 1, 1<<d_sf);
+          v = gr::lora::pmod(v - 1, 1<<d_sf);
         }
         symbols_in.push_back( v );
       }
@@ -347,7 +353,24 @@ namespace gr {
         d_crc = nibbles[2] & 1;
         d_cr = nibbles[2] >> 1;
         uint8_t checksum = (nibbles[3] << 4) | nibbles[4];
-        if (checksum != header_checksum(d_payload_len, nibbles[2] & 0xF))
+        bool is_valid = true;
+        if (checksum != gr::lora::header_checksum(d_payload_len, nibbles[2] & 0xF))
+        {
+          is_valid = false;
+        }
+        
+        if (symbol_id.substr(0,6) == "header")
+        {
+          pmt::pmt_t dict = pmt::make_dict();
+          dict = pmt::dict_add(dict, pmt::intern("id"), pmt::intern(symbol_id));
+          dict = pmt::dict_add(dict, pmt::intern("is_valid"), pmt::from_bool(is_valid));
+          dict = pmt::dict_add(dict, pmt::intern("payload_len"), pmt::from_long(d_payload_len));
+          dict = pmt::dict_add(dict, pmt::intern("cr"), pmt::from_long(d_cr));
+          dict = pmt::dict_add(dict, pmt::intern("crc"), pmt::from_bool(d_crc));
+          message_port_pub(d_header_port, dict);
+          return;
+        }
+        if (!is_valid)
         {
           return; // TODO report broken packet
         }
@@ -401,7 +424,7 @@ namespace gr {
       {
         int offset = d_header ? 3 : 0;
         uint16_t checksum = combined_bytes[d_payload_len+offset] | (combined_bytes[d_payload_len+offset+1] << 8);
-        combined_bytes.push_back(checksum == data_checksum(&combined_bytes[offset], d_payload_len));
+        combined_bytes.push_back(checksum == gr::lora::data_checksum(&combined_bytes[offset], d_payload_len));
       }
 
       pmt::pmt_t output = pmt::init_u8vector(combined_bytes.size(), combined_bytes);

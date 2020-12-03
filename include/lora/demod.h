@@ -25,12 +25,15 @@
 #include <lora/api.h>
 #include <gnuradio/block.h>
 
-#define DEMOD_HISTORY_DEPTH        3
+#define DEMOD_HISTORY_DEPTH        7
 #define REQUIRED_PREAMBLE_CHIRPS   4
 #define REQUIRED_SFD_CHIRPS        2
 #define LORA_SFD_TOLERANCE         1
 #define LORA_PREAMBLE_TOLERANCE    1
 #define DEMOD_SYNC_RECOVERY_COUNT  (8-REQUIRED_PREAMBLE_CHIRPS)+(2-REQUIRED_SFD_CHIRPS)+8
+#define FFT_PEAK_SEARCH_ABS        0
+#define FFT_PEAK_SEARCH_PHASE      1
+#define FFT_PEAK_SEARCH_B          2
 
 namespace gr {
   namespace lora {
@@ -63,12 +66,17 @@ namespace gr {
        * class. lora::demod::make is the public interface for
        * creating new instances.
        */
-      static sptr make( unsigned short spreading_factor,
-                        bool  low_data_rate,
-                        float beta,
-                        unsigned short fft_factor,
-                        float threshold,
-                        float fs_bw_ratio);
+      static sptr make( uint8_t   spreading_factor,
+                        bool      header,
+                        uint8_t   payload_len,
+                        uint8_t   cr,
+                        bool      crc,
+                        bool      low_data_rate,
+                        float     beta,
+                        uint16_t  fft_factor,
+                        uint8_t   peak_search_algorithm,
+                        uint16_t  peak_search_phase_k,
+                        float     fs_bw_ratio);
     };
 
   } // namespace lora

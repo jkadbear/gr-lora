@@ -50,11 +50,11 @@ namespace gr {
        * creating new instances.
        */
       static sptr make( short spreading_factor,
-                        short code_rate,
-                        bool  low_data_rate,
-                        bool  crc,
+                        bool  header,
                         short payload_len,
-                        bool  header);
+                        short code_rate,
+                        bool  crc,
+                        bool  low_data_rate);
     };
 
   } // namespace lora

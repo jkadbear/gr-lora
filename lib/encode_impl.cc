@@ -96,7 +96,7 @@ namespace gr
     encode_impl::gen_header(std::vector<unsigned char> &nibbles, uint8_t payload_len)
     {
       uint8_t cr_crc = (d_cr << 1) | d_crc;
-      uint8_t cks = header_checksum(payload_len, cr_crc);
+      uint8_t cks = gr::lora::header_checksum(payload_len, cr_crc);
       nibbles.push_back(payload_len >> 4);
       nibbles.push_back(payload_len & 0xF);
       nibbles.push_back(cr_crc);
@@ -290,7 +290,7 @@ namespace gr
 
       if (d_crc)
       {
-        uint16_t checksum = data_checksum(&bytes_in[0], pkt_len);
+        uint16_t checksum = gr::lora::data_checksum(&bytes_in[0], pkt_len);
         bytes_in.push_back(checksum & 0xFF);
         bytes_in.push_back((checksum >> 8) & 0xFF);
       }

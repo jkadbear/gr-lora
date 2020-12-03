@@ -32,7 +32,7 @@ namespace gr {
      *  \param  n
      *          divisor
      */
-    inline unsigned int mod(int x, unsigned int n)
+    inline unsigned int pmod(int x, unsigned int n)
     {
       return ((x % n) + n) % n;
     }

@@ -38,6 +38,19 @@ namespace gr {
     }
 
     /**
+     *  \brief  Python-style float modulo, (x % n) >= 0
+     *
+     *  \param  x
+     *          dividend
+     *  \param  n
+     *          divisor
+     */
+    inline float fpmod(float x, float n)
+    {
+      return std::fmod(std::fmod(x, n) + n, n);
+    }
+
+    /**
      *  \brief  Rotate the given bits to the left and return the result.
      *
      *  \param  bits

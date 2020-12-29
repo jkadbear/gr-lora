@@ -25,8 +25,6 @@
 #include <gnuradio/io_signature.h>
 #include "decode_impl.h"
 
-#define MAXIMUM_RDD 4
-
 // #define HAMMING_P1_BITMASK 0xAA  // 0b10101010
 // #define HAMMING_P2_BITMASK 0x66  // 0b01100110
 // #define HAMMING_P4_BITMASK 0x1E  // 0b00011110
@@ -95,7 +93,7 @@ namespace gr {
       set_msg_handler(d_in_port, boost::bind(&decode_impl::decode, this, _1));
 
       d_whitening_sequence = whitening_sequence;
-      if (d_sf < 6 | d_sf > 12)
+      if ((d_sf < 6) || (d_sf > 12))
       {
         std::cerr << "Invalid spreading factor -- this state should never occur." << std::endl;
       }
@@ -300,30 +298,15 @@ namespace gr {
 
       for (int i = 0; i < pkt_len; i++)
       {
-        unsigned short v = symbols_v[i];
-
-        if (d_ldr)
-        {
-          if (i == 0)
-          {
-            last_rem = v % 4;
-          }
-          this_rem = v % 4;
-          // compensate bin drift
-          if (gr::lora::pmod(this_rem - last_rem, 4) == 1) bin_offset -= 1;
-          else if (gr::lora::pmod(this_rem - last_rem, 4) == 3) bin_offset += 1;
-          last_rem = this_rem;
-          v = gr::lora::pmod(v + bin_offset, 1<<d_sf);
-        }
-
+        uint16_t v = symbols_v[i];
         // if low data rate optimization is on, the ppm of the entire packet is SF-2
         if (i < 8 || d_ldr)
         {
-          v = v / 4;
+          v /= 4;
         }
         else
         {
-          v = gr::lora::pmod(v - 1, 1<<d_sf);
+          v = gr::lora::pmod(v - 1, 1 << d_sf);
         }
         symbols_in.push_back( v );
       }

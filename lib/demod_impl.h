@@ -82,7 +82,7 @@ namespace gr {
       std::vector<gr_complex> d_upchirp;
       std::vector<gr_complex> d_downchirp;
 
-      std::vector<unsigned short> d_symbols;
+      std::vector<float> d_symbols;
 
       std::ofstream f_raw, f_up_windowless, f_up, f_down, f_fft;
 
@@ -105,6 +105,9 @@ namespace gr {
       unsigned int search_fft_peak(const lv_32fc_t *fft_result,
                                    float *buffer1, float *buffer2,
                                    gr_complex *buffer_c, float *max_val_p);
+      unsigned int fft_add(const lv_32fc_t *fft_result, float *buffer, gr_complex *buffer_c,
+                           float *max_val_p, float phase_offset);
+      void dynamic_compensation(std::vector<uint16_t>& compensated_symbols);
       
       void parse_header(pmt::pmt_t dict);
 

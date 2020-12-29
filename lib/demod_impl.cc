@@ -184,12 +184,8 @@ namespace gr {
         float tmp_max_val;
         for (int i = 0; i < d_peak_search_phase_k; i++)
         {
-          float phase = 2*M_PI/d_peak_search_phase_k*i;
-          lv_32fc_t s = lv_cmake((float)std::cos(phase), (float)std::sin(phase));
-          volk_32fc_s32fc_multiply_32fc(buffer_c, fft_result, s, d_bin_len);
-          volk_32fc_x2_add_32fc(buffer_c, buffer_c, &fft_result[d_fft_size-d_bin_len], d_bin_len);
-          volk_32fc_magnitude_32f(buffer2, buffer_c, d_bin_len);
-          tmp_max_idx = argmax_32f(buffer2, &tmp_max_val);
+          float phase_offset = 2*M_PI/d_peak_search_phase_k*i;
+          tmp_max_idx = fft_add(fft_result, buffer2, buffer_c, &tmp_max_val, phase_offset);
           if (tmp_max_val > *max_val_p)
           {
             *max_val_p = tmp_max_val;
@@ -199,10 +195,21 @@ namespace gr {
       }
       else
       {
-        /* code */
+        max_idx = fft_add(fft_result, buffer2, buffer_c, max_val_p, 0);
       }
       
       return max_idx;
+    }
+
+    unsigned int
+    demod_impl::fft_add(const lv_32fc_t *fft_result, float *buffer, gr_complex *buffer_c,
+                        float *max_val_p, float phase_offset)
+    {
+      lv_32fc_t s = lv_cmake((float)std::cos(phase_offset), (float)std::sin(phase_offset));
+      volk_32fc_s32fc_multiply_32fc(buffer_c, fft_result, s, d_bin_len);
+      volk_32fc_x2_add_32fc(buffer_c, buffer_c, &fft_result[d_fft_size-d_bin_len], d_bin_len);
+      volk_32fc_magnitude_32f(buffer, buffer_c, d_bin_len);
+      return argmax_32f(buffer, max_val_p); 
     }
 
     unsigned short
@@ -254,6 +261,32 @@ namespace gr {
     }
 
     void
+    demod_impl::dynamic_compensation(std::vector<uint16_t>& compensated_symbols)
+    {
+      float mod_base   = d_ldr ? 4.0 : 1.0;
+      float bin_offset = 0;
+      float last_rem   = 0;
+      float this_rem   = 0;
+
+      for (int i = 0; i < d_symbols.size(); i++)
+      {
+        float v = d_symbols[i];
+
+        if (i == 0)
+        {
+          last_rem = gr::lora::fpmod(v, mod_base);
+        }
+        this_rem = gr::lora::fpmod(v, mod_base);
+        float dis = gr::lora::fpmod(this_rem - last_rem, mod_base);
+        // compensate bin drift
+        if (dis < mod_base / 2) bin_offset -= dis;
+        else bin_offset -= (dis - mod_base);
+        last_rem = this_rem;
+        compensated_symbols.push_back(gr::lora::pmod(round(gr::lora::fpmod(v + bin_offset, d_num_symbols)), d_num_symbols));
+      }
+    }
+
+    void
     demod_impl::forecast (int noutput_items,
                           gr_vector_int &ninput_items_required)
     {
@@ -273,13 +306,12 @@ namespace gr {
 
 
       unsigned int num_consumed   = d_num_samples;
-      unsigned int max_index      = 0;
-      unsigned int max_index_sfd  = 0;
+      unsigned int max_idx        = 0;
+      unsigned int max_idx_sfd    = 0;
       bool         preamble_found = false;
       bool         sfd_found      = false;
       float        max_val        = 0;
       float        max_val_sfd    = 0;
-      unsigned int tmp_idx;
 
       // Nomenclature:
       //  up_block   == de-chirping buffer to contain upchirp features: the preamble, sync word, and data chirps
@@ -328,9 +360,9 @@ namespace gr {
       #endif
 
       // Take argmax of returned FFT (similar to MFSK demod)
-      max_index = search_fft_peak(d_fft->get_outbuf(), fft_res_mag, fft_res_add, fft_res_add_c, &max_val);
+      max_idx = search_fft_peak(d_fft->get_outbuf(), fft_res_mag, fft_res_add, fft_res_add_c, &max_val);
 
-      d_argmax_history.insert(d_argmax_history.begin(), max_index);
+      d_argmax_history.insert(d_argmax_history.begin(), max_idx);
 
       if (d_argmax_history.size() > REQUIRED_PREAMBLE_CHIRPS)
       {
@@ -339,6 +371,7 @@ namespace gr {
 
       switch (d_state) {
       case S_RESET:
+      {
         d_overlaps = OVERLAP_DEFAULT;
         d_offset = 0;
         d_symbols.clear();
@@ -354,10 +387,12 @@ namespace gr {
         #endif
 
         break;
+      }
 
 
 
       case S_PREFILL:
+      {
         if (d_argmax_history.size() >= REQUIRED_PREAMBLE_CHIRPS)
         {
           d_state = S_DETECT_PREAMBLE;
@@ -367,11 +402,13 @@ namespace gr {
           #endif
         }
         break;
+      }
 
 
 
       // Looks for the same symbol appearing consecutively, signifying the LoRa preamble
       case S_DETECT_PREAMBLE:
+      {
         d_preamble_idx = d_argmax_history[0];
 
         #if DEBUG >= DEBUG_VERBOSE
@@ -402,12 +439,14 @@ namespace gr {
           #endif
         }
         break;
+      }
 
 
 
       // Accurately synchronize to the SFD by computing overlapping FFTs of the downchirp/SFD IQ stream
       // Effectively increases FFT's time-based resolution, allowing for a better sync
       case S_SFD_SYNC:
+      {
         d_overlaps = OVERLAP_FACTOR;
 
         // Recover if the SFD is missed, or if we wind up in this state erroneously (false positive on preamble)
@@ -435,14 +474,14 @@ namespace gr {
         d_fft->execute();
 
         // Take argmax of downchirp FFT
-        max_index_sfd = search_fft_peak(d_fft->get_outbuf(), fft_res_mag, fft_res_add, fft_res_add_c, &max_val_sfd);
+        max_idx_sfd = search_fft_peak(d_fft->get_outbuf(), fft_res_mag, fft_res_add, fft_res_add_c, &max_val_sfd);
 
         // If SFD is detected
         if (max_val_sfd > max_val)
         {
-          int idx = max_index_sfd;
-          if (max_index_sfd > d_bin_len / 2) {
-            idx = max_index_sfd - d_bin_len;
+          int idx = max_idx_sfd;
+          if (max_idx_sfd > d_bin_len / 2) {
+            idx = max_idx_sfd - d_bin_len;
           }
           num_consumed = (int)round((2.25*d_num_samples + d_p*idx/2.0/d_fft_size_factor));
 
@@ -466,23 +505,27 @@ namespace gr {
         }
 
         break;
+      }
 
 
 
       case S_READ_HEADER:
+      {
         /* Preamble + modulo operation normalizes the symbols about the preamble; preamble symbol == value 0
          * Dividing by d_fft_size_factor reduces symbols to [0:(2**sf)-1] range
          * Dividing by 4 to further reduce symbol set to [0:(2**(sf-2)-1)], since header is sent at SF-2
          */
-        tmp_idx = ((unsigned short) round(d_num_symbols + (max_index - d_cfo)/d_fft_size_factor)) % d_num_symbols;
+        float bin_idx = gr::lora::fpmod((max_idx - d_cfo)/(float)d_fft_size_factor, d_num_symbols);
         #if DEBUG >= DEBUG_INFO
-          std::cout << "MIDX: " << tmp_idx << ", MV: " << max_val << std::endl;
+          std::cout << "MIDX: " << bin_idx << ", MV: " << max_val << std::endl;
         #endif
-        d_symbols.push_back( tmp_idx );
+        d_symbols.push_back( bin_idx );
 
         if (d_symbols.size() == 8)   // Symbols [0:7] contain 2**(SF-2) bits/symbol, symbols [8:] have the full 2**(SF) bits
         {
-          pmt::pmt_t header   = pmt::init_u16vector(d_symbols.size(), d_symbols);
+          std::vector<uint16_t> compensated_symbols;
+          dynamic_compensation(compensated_symbols);
+          pmt::pmt_t header   = pmt::init_u16vector(compensated_symbols.size(), compensated_symbols);
           pmt::pmt_t dict     = pmt::make_dict();
           dict = pmt::dict_add(dict, pmt::intern("id"), pmt::intern("header"));
           pmt::pmt_t msg_pair = pmt::cons(dict, header);
@@ -513,10 +556,11 @@ namespace gr {
         }
 
         break;
-
+      }
 
 
       case S_READ_PAYLOAD:
+      {
         if (d_symbols.size() >= d_packet_symbol_len)
         {
           d_state = S_OUT;
@@ -529,21 +573,24 @@ namespace gr {
           /* Preamble + modulo operation normalizes the symbols about the preamble; preamble symbol == value 0
           * Dividing by d_fft_size_factor reduces symbols to [0:(2**sf)-1] range
           */
-          tmp_idx = ((unsigned short) round(d_num_symbols + (max_index - d_cfo)/d_fft_size_factor)) % d_num_symbols;
+          float bin_idx = gr::lora::fpmod((max_idx - d_cfo)/(float)d_fft_size_factor, d_num_symbols);
           #if DEBUG >= DEBUG_INFO
-            std::cout << "MIDX: " << tmp_idx << ", MV: " << max_val << std::endl;
+            std::cout << "MIDX: " << bin_idx << ", MV: " << max_val << std::endl;
           #endif
-          d_symbols.push_back( tmp_idx );
+          d_symbols.push_back( bin_idx );
         }
 
         break;
+      }
 
 
 
       // Emit a PDU to the decoder
       case S_OUT:
       {
-        pmt::pmt_t output = pmt::init_u16vector(d_symbols.size(), d_symbols);
+        std::vector<uint16_t> compensated_symbols;
+        dynamic_compensation(compensated_symbols);
+        pmt::pmt_t output = pmt::init_u16vector(compensated_symbols.size(), compensated_symbols);
         pmt::pmt_t dict = pmt::make_dict();
         dict = pmt::dict_add(dict, pmt::intern("id"), pmt::intern("packet"));
         pmt::pmt_t msg_pair = pmt::cons(dict, output);

@@ -29,11 +29,11 @@
 #define DEBUG_INFO               1
 #define DEBUG_VERBOSE            2
 #define DEBUG_VERBOSE_VERBOSE    3
-#define DEBUG                    DEBUG_VERBOSE
+#define DEBUG                    DEBUG_OFF
 
 #define DUMP_IQ       0
 
-#define OVERLAP_FACTOR  16
+#define OVERLAP_FACTOR  8
 
 namespace gr {
   namespace lora {
@@ -79,10 +79,12 @@ namespace gr {
       assert(((int)fs_bw_ratio) == fs_bw_ratio);
       d_p = (int) fs_bw_ratio;
 
+      d_header_port = pmt::mp("header");
+      message_port_register_in(d_header_port);
       d_out_port = pmt::mp("out");
       message_port_register_out(d_out_port);
 
-      d_state = PS_RESET;
+      // set_msg_handler(d_header_port, [this](pmt::pmt_t msg) { this->parse_header(msg); });
 
       d_num_symbols = (1 << d_sf);
       d_num_samples = d_p*d_num_symbols;
@@ -99,11 +101,6 @@ namespace gr {
       d_bin_ref = 0;
       d_bin_tolerance = (d_ldr ? d_fft_size_factor * 2 : d_fft_size_factor / 2);
 
-      d_power     = .000000001;     // MAGIC
-      // d_threshold = 0.005;          // MAGIC
-      // d_threshold = 0.003;          // MAGIC
-      // d_threshold = 0.12;           // MAGIC
-
       // Create local chirp tables.  Each table is 2 chirps long to allow memcpying from arbitrary offsets.
       for (int i = 0; i < d_num_samples; i++) {
         double phase = M_PI/d_p*(i-i*i/(float)d_num_samples);
@@ -111,7 +108,7 @@ namespace gr {
         d_upchirp.push_back(gr_complex(std::polar(1.0, -phase)));
       }
 
-      unsigned short track_size = 40; // MAGIC
+      unsigned short track_size = 1000; // MAGIC
       d_num_preamble = 6; // MAGIC
       d_track.resize(track_size);
       for (auto & v : d_track)
@@ -132,7 +129,7 @@ namespace gr {
         d_packet_id_pool.push_back(i);
       }
 
-      set_history(DEMOD_HISTORY_DEPTH*d_num_samples);  // Sync is 2.25 chirp periods long
+      set_history(PY_DEMOD_HISTORY_DEPTH*d_num_samples);  // Sync is 2.25 symbols long
     }
 
     /*
@@ -149,7 +146,7 @@ namespace gr {
     {
       float mag   = abs(fft_result[0]);
       float max_val = mag;
-      unsigned int   max_idx = 0;
+      unsigned int max_idx = 0;
 
       for (unsigned int i = 0; i < d_bin_size; i++)
       {
@@ -159,12 +156,6 @@ namespace gr {
           max_idx = i;
           max_val = mag;
         }
-      }
-
-      if (update_squelch)
-      {
-        d_power = max_val;
-        d_squelched = (max_val > d_threshold) ? false : true;
       }
 
       *max_val_p = max_val;
@@ -177,7 +168,7 @@ namespace gr {
     {
       float magsq   = pow(real(fft_result[0]), 2) + pow(imag(fft_result[0]), 2);
       float max_val = magsq;
-      unsigned short   max_idx = 0;
+      unsigned short max_idx = 0;
 
 
       for (unsigned short i = 0; i < d_fft_size; i++)
@@ -190,32 +181,64 @@ namespace gr {
         }
       }
 
-      if (update_squelch)
-      {
-        d_power = max_val;
-        d_squelched = (d_power > d_threshold) ? false : true;
-      }
-
       return max_idx;
     }
 
+    float
+    pyramid_demod_impl::get_dis(unsigned int ts1, float h1, unsigned int ts2, float h2)
+    {
+      float dis = gr::lora::pmod(ts1 - ts2, d_num_samples) / (float) d_num_samples;
+      // In definition above, "dis->0" and "dis->1" both mean their timestamp differences to the actual timestamp is small
+      // therefore we transform dis to let "dis->1" represent larger difference
+      dis = (dis > 0.5) ? (1 - dis) * 2 : dis * 2;
+      dis += std::abs(h1 - h2) / h2;
+      return dis;
+    }
+
+    // void
+    // pyramid_demod_impl::parse_header(pmt::pmt_t dict)
+    // {
+    //   pmt::pmt_t not_found = pmt::from_bool(false);
+
+    //   std::string symbol_id = pmt::symbol_to_string(pmt::dict_ref(dict, pmt::intern("id"), not_found));
+    //   d_header_valid        = pmt::to_bool(pmt::dict_ref(dict, pmt::intern("is_valid"), not_found));
+    //   d_header_received     = true;
+
+    //   if (d_header_valid)
+    //   {
+    //     d_payload_len       = pmt::to_long(pmt::dict_ref(dict, pmt::intern("payload_len"), not_found));
+    //     d_cr                = pmt::to_long(pmt::dict_ref(dict, pmt::intern("cr"), not_found));
+    //     d_crc               = pmt::to_bool(pmt::dict_ref(dict, pmt::intern("crc"), not_found));
+    //     d_packet_symbol_len = 8 + std::max((4+d_cr)*(int)std::ceil((2.0*d_payload_len-d_sf+7+4*d_crc-5*!d_header)/(d_sf-2*d_ldr)), 0); 
+
+    //     #if DEBUG >= DEBUG_INFO
+    //       std::cout << "PARSE HEADER" << std::endl;
+    //       std::cout << "id: " << symbol_id << std::endl;
+    //       std::cout << "payload_len: " << int(d_payload_len) << std::endl;
+    //       std::cout << "cr: " << int(d_cr) << std::endl;
+    //       std::cout << "crc: " << int(d_crc) << std::endl;
+    //       std::cout << "packet_symbol_len: " << int(d_packet_symbol_len) << std::endl;
+    //     #endif
+    //   }
+    // }
+
     void
-    pyramid_demod_impl::find_and_add_peak(float *fft_mag, float *fft_mag_w)
+    pyramid_demod_impl::find_and_add_peak(float *fft_add, float *fft_add_w, float *fft_mag)
     {
       for (unsigned int i = 0; i < d_bin_size; i++)
       {
-        // find peak: search a local max with value larger than d_threshold
-        unsigned int l_idx = pos_mod(i-1, d_bin_size);
-        unsigned int r_idx = pos_mod(i+1, d_bin_size);
-        if(fft_mag_w[i] > d_threshold && fft_mag_w[i] > fft_mag_w[l_idx] && fft_mag_w[i] > fft_mag_w[r_idx])
+        // find peak: search local maximum larger than d_threshold
+        unsigned int l_idx = gr::lora::pmod(i-1, d_bin_size);
+        unsigned int r_idx = gr::lora::pmod(i+1, d_bin_size);
+        if(fft_add_w[i] > d_threshold && fft_add_w[i] > fft_add_w[l_idx] && fft_add_w[i] > fft_add_w[r_idx])
         {
-          // this is a peak, insert it into peak track
-          unsigned int cur_bin = pos_mod(d_bin_size + i - d_bin_ref, d_bin_size);
+          // this is a peak, insert it into the peak track
+          unsigned int cur_bin = gr::lora::pmod(d_bin_size + i - d_bin_ref, d_bin_size);
           bool found = false;
           unsigned short track_id;
           for (auto & bt: d_bin_track_id_list)
           {
-            unsigned int dis = pos_mod(d_bin_size + cur_bin - bt.bin, d_bin_size);
+            unsigned int dis = gr::lora::pmod(d_bin_size + cur_bin - bt.bin, d_bin_size);
             #if DEBUG >= DEBUG_VERBOSE_VERBOSE
               std::cout << "dis: " << dis << ", bt.bin: " << bt.bin << std::endl;
             #endif
@@ -241,21 +264,66 @@ namespace gr {
           }
 
           #if DEBUG >= DEBUG_VERBOSE_VERBOSE
-            std::cout << "bin: " << i << ", ref bin: " << d_bin_ref << ", peak height: " << fft_mag[l_idx] << " "  << fft_mag[i] << " " << fft_mag[r_idx] << std::endl;
-            std::cout << "track id: " << track_id << ", track size: " << d_track[track_id].size() << ", track id pool size: " << d_track_id_pool.size() << std::endl;
+            std::cout << "track id: " << track_id << ", track size: " << d_track[track_id].size() << ", track id pool size: " << d_track_id_pool.size() << ", bin: " << i << ", ref bin: " << d_bin_ref << ", peak height: " << fft_add[l_idx] << " " << fft_add[i] << " " << fft_add[r_idx] << " " << fft_add_w[i] << std::endl;
           #endif
-          d_track[track_id].push_back(peak(d_ts_ref, i, fft_mag[i]));
+          d_track[track_id].push_back(peak(d_ts_ref, i, fft_add[i], std::max(fft_mag[i], fft_mag[d_fft_size-d_bin_size+i])));
         }
       }
     }
 
-    symbol_type pyramid_demod_impl::get_central_peak(unsigned short track_id, peak & pk)
+    void
+    pyramid_demod_impl::get_apex(std::vector<peak> &track, peak & pk, bool is_preamble)
+    {
+      float h[OVERLAP_FACTOR*2 + 10];
+      for (int i = 0; i < track.size(); i++)
+      {
+        h[i] = is_preamble ? track[i].h_single : track[i].h;
+      }
+      float max_h = h[0];
+      unsigned short idx = 0;
+      for (unsigned short i = 1; i < track.size(); i++)
+      {
+        if (h[i] > max_h)
+        {
+          max_h = h[i];
+          idx = i;
+        }
+      }
+#if APEX_ALGORITHM == APEX_ALGORITHM_SEGMENT
+      pk.ts  = track[idx].ts;
+      pk.bin = track[idx].bin;
+      pk.h   = h[idx];
+#elif APEX_ALGORITHM == APEX_ALGORITHM_LINEAR_REGRESSION
+      // linear regression method requires at least 4 points
+      if (idx < 1 || idx > track.size() - 2 || track.size() < 4)
+      {
+        pk.ts  = track[idx].ts;
+        pk.bin = track[idx].bin;
+        pk.h   = h[idx];
+      }
+      else
+      {
+        unsigned short l_idx = h[idx-1] > h[idx+1] ? idx-1 : idx;
+        float k1, b1, k2, b2;
+        linear_regression(h, 0, l_idx, &k1, &b1);
+        linear_regression(h, l_idx+1, track.size()-1, &k2, &b2);
+        float x = -(b2-b1)/(k2-k1);
+        pk.ts = gr::lora::pmod(track[l_idx].ts + round((x-l_idx)*d_num_samples/d_overlaps), TIMESTAMP_MOD);
+        pk.h = k1 * x + b1;
+        // std::cout << "k1: " << k1 << ", b1: " << b1 << ", k2: " << k2 << ", b2: " << b2 << ", x: " << x << std::endl;
+        pk.bin = gr::lora::pmod(track[l_idx].bin + round((x-l_idx)*d_bin_size/d_overlaps), d_bin_size);
+      }
+#endif
+    }
+
+    symbol_type
+    pyramid_demod_impl::get_central_peak(unsigned short track_id, peak & pk)
     {
       auto track = d_track[track_id];
       unsigned short len = track.size();
 
       #if DEBUG >= DEBUG_VERBOSE
-        std::cout << "track id: " << track_id << ", track height: ";
+        std::cout << "track id: " << track_id << ", peak height: ";
         for (auto & pk : track)
         {
           std::cout << pk.h << ", ";
@@ -264,19 +332,44 @@ namespace gr {
       #endif
       if (len >= d_overlaps*(d_num_preamble-1) + 2)
       {
-        // preamble
-        unsigned short l_idx = len/2 - d_overlaps*(d_num_preamble-1)/2;
-        unsigned short r_idx = (len-1)/2 + d_overlaps*(d_num_preamble-1)/2;
-        if (track[l_idx].h > track[r_idx].h)
+        // // preamble
+        // unsigned short l_idx = len/2 - d_overlaps*(d_num_preamble-1)/2;
+        // unsigned short r_idx = (len-1)/2 + d_overlaps*(d_num_preamble-1)/2;
+        // if (track[l_idx].h > track[r_idx].h)
+        // {
+        //   pk.ts  = track[l_idx].ts + d_num_samples/4 + (d_num_preamble-1)*d_num_samples;
+        //   pk.bin = track[l_idx].bin;
+        // }
+        // else 
+        // {
+        //   pk.ts  = track[r_idx].ts + d_num_samples/4;
+        //   pk.bin = track[r_idx].bin;
+        // }
+
+        // extract the last chirp of preamble
+        // determine the timestamp of preamble through the single peak trajectory
+        unsigned short r_idx = track.size() - d_overlaps;
+        float max_h = -1;
+        for (int i = r_idx; i < track.size(); i++)
         {
-          pk.ts  = track[l_idx].ts + d_num_samples/4 + (d_num_preamble-1)*d_num_samples;
-          pk.bin = track[l_idx].bin;
+          if (track[i].h > max_h)
+          {
+            max_h = track[i].h;
+            r_idx = i;
+          }
         }
-        else 
+        unsigned short start_idx = r_idx;
+        for (; start_idx > r_idx - d_overlaps/2; start_idx--)
         {
-          pk.ts  = track[r_idx].ts + d_num_samples/4;
-          pk.bin = track[r_idx].bin;
+          if (track[start_idx-1].h_single > track[start_idx].h_single
+              || track[start_idx].h_single < d_threshold)
+            break;
         }
+
+        std::vector<peak> track_cut(track.begin()+start_idx, track.end());
+        get_apex(track_cut, pk, true);
+        pk.ts = gr::lora::pmod(pk.ts + d_num_samples/4, TIMESTAMP_MOD);
+
         float sum = 0;
         for (unsigned int i = d_overlaps*2; i < d_overlaps*(d_num_preamble-2); i++)
         {
@@ -289,22 +382,7 @@ namespace gr {
       else if (len >= 2 && len <= 2*d_overlaps)
       {
         // get apex of this peak tracking
-#if APEX_ALGORITHM == APEX_ALGORITHM_SEGMENT
-        float max_h = track[0].h;
-        unsigned short idx = 0;
-        for (unsigned short i = 1; i < len; i++)
-        {
-          if (track[i].h > max_h)
-          {
-            max_h = track[i].h;
-            idx = i;
-          }
-        }
-        pk.ts  = track[idx].ts;
-        pk.bin = track[idx].bin;
-        pk.h   = track[idx].h;
-#elif APEX_ALGORITHM == APEX_ALGORITHM_LINEAR_REGRESSION
-#endif
+        get_apex(track, pk);
         return SYMBOL_DATA;
       }
       // TODO special case: more than two consecutive same data symbols
@@ -345,16 +423,19 @@ namespace gr {
         {
           // put peak into the best matched packet
           auto const & ps = d_packet_state_list[i];
-          unsigned int ts_dis = pos_mod(pk.ts - d_packet[ps.packet_id][0].ts, TIMESTAMP_MOD);
+          unsigned int ts_dis = gr::lora::pmod(pk.ts - d_packet[ps.packet_id][0].ts, TIMESTAMP_MOD);
           // candidate symbols must have valid timestamp
           if (ts_dis > 4 * d_num_samples && ts_dis < TIMESTAMP_MOD / 2)
           {
-            float dis = pos_mod(ts_dis, d_num_samples) / (float) d_num_samples;
+            float dis = gr::lora::pmod(ts_dis, d_num_samples) / (float) d_num_samples;
             // In definition above, "dis->0" and "dis->1" both mean their timestamp differences to the actual timestamp is small
             // therefore we transform dis to let "dis->1" represent larger difference
             dis = (dis > 0.5) ? (1 - dis) * 2 : dis * 2;
             // dis += std::abs(d_packet[ps.packet_id][0].h - pk.h) / d_packet[ps.packet_id][0].h;
-            if (dis < min_dis)
+            float h_dis = std::abs(d_packet[ps.packet_id][0].h - pk.h) / d_packet[ps.packet_id][0].h;
+            // dis += h_dis;
+            // peak height difference should not be large
+            if (dis < min_dis && h_dis < 0.5)
             {
               found     = true;
               pkt_idx   = i;
@@ -401,7 +482,7 @@ namespace gr {
         {
           erase_cnt++ ;
           // this peak tracking is over, extract the apex
-          peak pk(0, 0, 0);
+          peak pk(0,0,0,0);
           symbol_type st = get_central_peak(bt.track_id, pk);
           // #if DEBUG >= DEBUG_INFO
           //   if (st == SYMBOL_PREAMBLE || st == SYMBOL_DATA)
@@ -475,9 +556,10 @@ namespace gr {
       gr_complex *up_block   = (gr_complex *)volk_malloc(d_fft_size*sizeof(gr_complex), volk_get_alignment());
       gr_complex *up_block_w = (gr_complex *)volk_malloc(d_fft_size*sizeof(gr_complex), volk_get_alignment());
       gr_complex *down_block = (gr_complex *)volk_malloc(d_fft_size*sizeof(gr_complex), volk_get_alignment());
-      float *fft_res_mag     = (float*)volk_malloc(d_fft_size*sizeof(float), volk_get_alignment());
-      float *fft_res_add     = (float*)volk_malloc(d_bin_size*sizeof(float), volk_get_alignment());
-      float *fft_res_add_w   = (float*)volk_malloc(d_fft_size*sizeof(float), volk_get_alignment());
+      float *fft_mag     = (float*)volk_malloc(d_fft_size*sizeof(float), volk_get_alignment());
+      float *fft_mag_w   = (float*)volk_malloc(d_fft_size*sizeof(float), volk_get_alignment());
+      float *fft_add     = (float*)volk_malloc(d_bin_size*sizeof(float), volk_get_alignment());
+      float *fft_add_w   = (float*)volk_malloc(d_fft_size*sizeof(float), volk_get_alignment());
 
       if (buffer == NULL || up_block == NULL || down_block == NULL)
       {
@@ -486,15 +568,7 @@ namespace gr {
 
       // Dechirp the incoming signal
       volk_32fc_x2_multiply_32fc(down_block, in, &d_upchirp[0], d_num_samples);
-
-      if (d_state == PS_READ_HEADER || d_state == PS_READ_PAYLOAD)
-      {
-        volk_32fc_x2_multiply_32fc(up_block, in, &d_downchirp[0], d_num_samples);
-      }
-      else
-      {
-        volk_32fc_x2_multiply_32fc(up_block, in, &d_downchirp[0], d_num_samples);
-      }
+      volk_32fc_x2_multiply_32fc(up_block, in, &d_downchirp[0], d_num_samples);
 
       // Enable to write IQ to disk for debugging
       #if DUMP_IQ
@@ -505,7 +579,6 @@ namespace gr {
       volk_32fc_32f_multiply_32fc(up_block_w, up_block, &d_window[0], d_num_samples);
 
       #if DUMP_IQ
-        if (d_state != PS_SFD_SYNC) f_down.write((const char*)&down_block[0], d_num_samples*sizeof(gr_complex));
         f_up.write((const char*)&up_block[0], d_num_samples*sizeof(gr_complex));
       #endif
 
@@ -519,23 +592,19 @@ namespace gr {
       #endif
 
       // fft result magnitude summation
-      volk_32fc_magnitude_32f(fft_res_mag, d_fft->get_outbuf(), d_fft_size);
-      volk_32f_x2_add_32f(fft_res_add, fft_res_mag, &fft_res_mag[d_bin_size], d_bin_size);
-      volk_32f_x2_add_32f(fft_res_add, fft_res_add, &fft_res_mag[d_fft_size-2*d_bin_size], d_bin_size);
-      volk_32f_x2_add_32f(fft_res_add, fft_res_add, &fft_res_mag[d_fft_size-d_bin_size], d_bin_size);
+      volk_32fc_magnitude_32f(fft_mag, d_fft->get_outbuf(), d_fft_size);
+      volk_32f_x2_add_32f(fft_add, fft_mag, &fft_mag[d_bin_size], d_bin_size);
 
       // apply FFT on windowed signal
       memset(d_fft->get_inbuf(),              0, d_fft_size*sizeof(gr_complex));
       memcpy(d_fft->get_inbuf(), &up_block_w[0], d_num_samples*sizeof(gr_complex));
       d_fft->execute();
-      volk_32fc_magnitude_32f(fft_res_mag, d_fft->get_outbuf(), d_fft_size);
-      volk_32f_x2_add_32f(fft_res_add_w, fft_res_mag, &fft_res_mag[d_bin_size], d_bin_size);
-      volk_32f_x2_add_32f(fft_res_add_w, fft_res_add_w, &fft_res_mag[d_fft_size-2*d_bin_size], d_bin_size);
-      volk_32f_x2_add_32f(fft_res_add_w, fft_res_add_w, &fft_res_mag[d_fft_size-d_bin_size], d_bin_size);
+      volk_32fc_magnitude_32f(fft_mag_w, d_fft->get_outbuf(), d_fft_size);
+      volk_32f_x2_add_32f(fft_add_w, fft_mag_w, &fft_mag_w[d_bin_size], d_bin_size);
 
       // 1. peak tracking
-      find_and_add_peak(fft_res_add, fft_res_add_w);
-      // 2. kick out those peaks without update, push them into packet list
+      find_and_add_peak(fft_add, fft_add_w, fft_mag);
+      // 2. stop tracking those peaks without updates, and push them into packet list
       check_and_update_track();
       // 3. check packets
       for (auto const & ps : d_packet_state_list)
@@ -582,14 +651,14 @@ namespace gr {
           #endif
 
           #if DEBUG >= DEBUG_INFO
-            std::cout << "Finished packet: ";
+            std::cout << "Finished Packet#" << ps.packet_id << ": ";
           #endif
 
           // set relative timestamp to preamble
           // then ts_preamble = 0
           for (auto & pk : pkt)
           {
-            pk.ts = pos_mod(pk.ts-pre_ts, TIMESTAMP_MOD);
+            pk.ts = gr::lora::pmod(pk.ts-pre_ts, TIMESTAMP_MOD);
           }
           pre_ts = 0;
 
@@ -613,7 +682,7 @@ namespace gr {
           // ts_data - ts_preamble = 5*d_num_samples (ts_preamble has 0.25 fix in our implementation)
           // The first data symbol timestamp is in ts_preamble+[4.5,5.5]*d_num_samples
           unsigned int ts_interval_l = 4*d_num_samples + d_num_samples/2;
-          // "i" starts from 1, ignoring the first preamble symbol
+          // "i" starts from 1, ignoring preamble
           for (unsigned int start_idx = 1; start_idx < pkt.size(); )
           {
             bool is_first = true;
@@ -649,11 +718,7 @@ namespace gr {
               unsigned int idx = start_idx;
               for (unsigned int i = start_idx; i < end_idx; i++)
               {
-                float dis = pos_mod(pkt[i].ts - pre_ts, d_num_samples) / (float) d_num_samples;
-                // In definition above, "dis->0" and "dis->1" both mean their timestamp differences to the actual timestamp is small
-                // therefore we transform dis to let "dis->1" represent larger difference
-                dis = (dis > 0.5) ? (1 - dis) * 2 : dis * 2;
-                dis += std::abs(pkt[i].h - pre_h) / pre_h;
+                float dis = get_dis(pkt[i].ts, pkt[i].h, pre_ts, pre_h);
                 if (dis < min_dis)
                 {
                   min_dis = dis;
@@ -661,15 +726,14 @@ namespace gr {
                 }
               }
 
-              // ts could have been overflowed
-              int bin_shift = pos_mod(pkt[idx].ts - pre_ts, d_num_samples) * d_bin_size / d_num_samples;
-              unsigned int bin = pos_mod(pkt[idx].bin - pre_bin - bin_shift, d_bin_size);
+              // ts could have overflowed
+              int bin_shift = gr::lora::pmod(pkt[idx].ts - pre_ts, d_num_samples) * d_bin_size / d_num_samples;
+              unsigned int bin = gr::lora::pmod(pkt[idx].bin - pre_bin - bin_shift, d_bin_size);
               symbols.push_back(bin / d_fft_size_factor);
 
               #if DEBUG >= DEBUG_VERBOSE
                 std::cout << "bin: " << bin / d_fft_size_factor << ", packet bin: " << pkt[idx].bin << ", bin_shift: " << bin_shift << std::endl;
-              #endif
-              #if DEBUG >= DEBUG_INFO
+              #elif DEBUG >= DEBUG_INFO
                 std::cout << bin / d_fft_size_factor << ",";
               #endif
             }
@@ -682,7 +746,7 @@ namespace gr {
             }
 
             start_idx = end_idx;
-            ts_interval_l = pos_mod(ts_interval_l + d_num_samples, TIMESTAMP_MOD);
+            ts_interval_l = gr::lora::pmod(ts_interval_l + d_num_samples, TIMESTAMP_MOD);
           }
           #if DEBUG >= DEBUG_INFO
             std::cout << std::endl;
@@ -691,8 +755,10 @@ namespace gr {
           // LoRa data payload has at least 8 symbols
           if (symbols.size() >= 8)
           {
+            pmt::pmt_t dict = pmt::make_dict();
+            dict = pmt::dict_add(dict, pmt::intern("id"), pmt::intern("packet"));
             pmt::pmt_t output = pmt::init_u16vector(symbols.size(), symbols);
-            pmt::pmt_t msg_pair = pmt::cons(pmt::make_dict(), output);
+            pmt::pmt_t msg_pair = pmt::cons(dict, output);
             message_port_pub(d_out_port, msg_pair);
           }
 
@@ -715,22 +781,23 @@ namespace gr {
         ps.ttl -= 1;
       }
 
-      d_ts_ref   = pos_mod(d_ts_ref + d_num_samples / d_overlaps, TIMESTAMP_MOD);
-      d_bin_ref  = pos_mod(d_bin_ref + d_bin_size / d_overlaps, d_bin_size);
+      d_ts_ref   = gr::lora::pmod(d_ts_ref + d_num_samples / d_overlaps, TIMESTAMP_MOD);
+      d_bin_ref  = gr::lora::pmod(d_bin_ref + d_bin_size / d_overlaps, d_bin_size);
 
       #if DUMP_IQ
         f_raw.write((const char*)&in[0], num_consumed*sizeof(gr_complex));
       #endif
 
-      consume_each (num_consumed);
+      consume_each(num_consumed);
 
       free(down_block);
       free(up_block);
       free(up_block_w);
       free(buffer);
-      free(fft_res_mag);
-      free(fft_res_add);
-      free(fft_res_add_w);
+      free(fft_mag);
+      free(fft_mag_w);
+      free(fft_add);
+      free(fft_add_w);
 
       return noutput_items;
     }

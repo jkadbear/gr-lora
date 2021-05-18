@@ -118,6 +118,45 @@ namespace gr {
 
       return res;
     }
+
+    inline void linear_regression(float *h, int start_idx, int end_idx, float *k, float *b)
+    {
+      // std::cout << "idx: ";
+      // for (size_t i = start_idx; i <= end_idx; i++)
+      // {
+      //   std::cout << i << ",";
+      // }
+      // std::cout << std::endl << "h: ";
+      // for (size_t i = start_idx; i <= end_idx; i++)
+      // {
+      //   std::cout << h[i] << ",";
+      // }
+      // std::cout << std::endl;
+      
+      float avg_x = 0, avg_y = 0;
+      for (size_t i = start_idx; i <= end_idx; i++)
+      {
+        avg_x += i;
+        avg_y += h[i];
+      }
+      avg_x /= (end_idx - start_idx + 1);
+      avg_y /= (end_idx - start_idx + 1);
+
+      float numerator = 0, denominator = 0;
+      for (size_t i = start_idx; i <= end_idx; i++)
+      {
+        numerator += (i - avg_x) * (h[i] - avg_y);
+        denominator += (i - avg_x) * (i - avg_x);
+      }
+      
+      if (denominator == 0)
+      {
+        std::cerr << "Invalid denominator -- this state should never occur." << std::endl;
+      }
+
+      *k = numerator / denominator;
+      *b = avg_y - *k * avg_x;
+    }
   }
 }
 

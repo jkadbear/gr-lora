@@ -263,26 +263,23 @@ namespace gr {
     void
     demod_impl::dynamic_compensation(std::vector<uint16_t>& compensated_symbols)
     {
-      float mod_base   = d_ldr ? 4.0 : 1.0;
-      float bin_offset = 0;
-      float last_rem   = 0;
-      float this_rem   = 0;
+      float modulus   = d_ldr ? 4.0 : 1.0;
+      float bin_drift = 0;
+      float bin_comp  = 0;
+      float v         = 0;
+      float v_last    = 1;
 
       for (int i = 0; i < d_symbols.size(); i++)
       {
-        float v = d_symbols[i];
+        v = d_symbols[i];
 
-        if (i == 0)
-        {
-          last_rem = gr::lora::fpmod(v, mod_base);
-        }
-        this_rem = gr::lora::fpmod(v, mod_base);
-        float dis = gr::lora::fpmod(this_rem - last_rem, mod_base);
+        bin_drift = gr::lora::fpmod(v - v_last, modulus);
+
         // compensate bin drift
-        if (dis < mod_base / 2) bin_offset -= dis;
-        else bin_offset -= (dis - mod_base);
-        last_rem = this_rem;
-        compensated_symbols.push_back(gr::lora::pmod(round(gr::lora::fpmod(v + bin_offset, d_num_symbols)), d_num_symbols));
+        if (bin_drift < modulus / 2) bin_comp -= bin_drift;
+        else bin_comp -= (bin_drift - modulus);
+        v_last = v;
+        compensated_symbols.push_back(gr::lora::pmod(round(gr::lora::fpmod(v + bin_comp, d_num_symbols)), d_num_symbols));
       }
     }
 
@@ -600,8 +597,8 @@ namespace gr {
         #if DEBUG >= DEBUG_INFO
           std::cout << "Next state: S_RESET" << std::endl;
           std::cout << "d_symbols size: " << d_symbols.size() << std::endl;
-          std::cout << "d_symbols: ";
-          for (auto i: d_symbols) {
+          std::cout << "compensated_symbols: ";
+          for (auto i: compensated_symbols) {
             std::cout << i << " ";
           }
           std::cout << std::endl;

@@ -47,8 +47,9 @@ namespace gr {
       unsigned int     ts;     // timestamp
       unsigned int     bin;    // peak position bin
       float            h;      // peak height
-      peak(unsigned int ts, unsigned int bin, float h)
-        : ts(ts), bin(bin), h(h)
+      float            h_single;     // single peak height
+      peak(unsigned int ts, unsigned int bin, float h, float h_single)
+        : ts(ts), bin(bin), h(h), h_single(h_single)
       {}
     };
 
@@ -76,9 +77,9 @@ namespace gr {
     class pyramid_demod_impl : public pyramid_demod
     {
      private:
+      pmt::pmt_t d_header_port;
       pmt::pmt_t d_out_port;
 
-      pyramid_demod_state_t   d_state;
       unsigned short  d_sf;
       bool d_ldr;
 
@@ -136,8 +137,12 @@ namespace gr {
 
       unsigned short argmax(gr_complex *fft_result, bool update_squelch);
       unsigned int argmax_32f(float *fft_result, bool update_squelch, float *max_val_p);
+      float get_dis(unsigned int ts1, float h1, unsigned int ts2, float h2);
 
-      void find_and_add_peak(float *fft_mag, float *fft_mag_w);
+      // void parse_header(pmt::pmt_t dict);
+
+      void find_and_add_peak(float *fft_mag_add, float *fft_mag_add_w, float *fft_mag);
+      void get_apex(std::vector<peak> & track, peak & pk, bool is_preamble=false);
       symbol_type get_central_peak(unsigned short track_id, peak & pk);
       bool add_symbol_to_packet(peak & pk, symbol_type st);
       void check_and_update_track();

@@ -1,0 +1,330 @@
+options:
+  parameters:
+    author: jkadbear
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: ''
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: rx_collision_file
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: Collision Decoding
+    window_size: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 8]
+    rotation: 0
+    state: enabled
+
+blocks:
+- name: bw
+  id: variable
+  parameters:
+    comment: ''
+    value: 500e3/4
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [578, 11]
+    rotation: 0
+    state: enabled
+- name: cr
+  id: variable
+  parameters:
+    comment: ''
+    value: '4'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [928, 12]
+    rotation: 0
+    state: enabled
+- name: crc
+  id: variable
+  parameters:
+    comment: ''
+    value: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1024, 12]
+    rotation: 0
+    state: enabled
+- name: freq
+  id: variable
+  parameters:
+    comment: ''
+    value: 470e6
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [360, 12]
+    rotation: 0
+    state: enabled
+- name: header
+  id: variable
+  parameters:
+    comment: ''
+    value: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [696, 12]
+    rotation: 0
+    state: enabled
+- name: ldr
+  id: variable
+  parameters:
+    comment: ''
+    value: 2**sf/bw > 16e-3
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1128, 12]
+    rotation: 0
+    state: enabled
+- name: payload_len
+  id: variable
+  parameters:
+    comment: ''
+    value: '8'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [800, 12]
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: 1e6
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [240, 12]
+    rotation: 0
+    state: enabled
+- name: sf
+  id: variable
+  parameters:
+    comment: ''
+    value: '8'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [476, 12]
+    rotation: 0
+    state: enabled
+- name: blocks_file_source_0
+  id: blocks_file_source
+  parameters:
+    affinity: ''
+    alias: ''
+    begin_tag: pmt.PMT_NIL
+    comment: ''
+    file: /src/signals/sf8_bw125_cr45_collision
+    length: '0'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    offset: '0'
+    repeat: 'False'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [7, 178]
+    rotation: 0
+    state: true
+- name: blocks_message_debug_0
+  id: blocks_message_debug
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1411, 204]
+    rotation: 0
+    state: enabled
+- name: blocks_message_debug_0_0
+  id: blocks_message_debug
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1165, 105]
+    rotation: 0
+    state: disabled
+- name: blocks_socket_pdu_0
+  id: blocks_socket_pdu
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    host: 127.0.0.1
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    mtu: '10000'
+    port: '52002'
+    tcp_no_delay: 'False'
+    type: UDP_CLIENT
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1388, 412]
+    rotation: 0
+    state: enabled
+- name: blocks_throttle_0
+  id: blocks_throttle
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    ignoretag: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samples_per_second: samp_rate
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [190, 348]
+    rotation: 0
+    state: true
+- name: lora_decode_0
+  id: lora_decode
+  parameters:
+    affinity: ''
+    alias: ''
+    code_rate: cr
+    comment: ''
+    crc: crc
+    header: header
+    low_data_rate: ldr
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    payload_len: payload_len
+    spreading_factor: sf
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1113, 313]
+    rotation: 0
+    state: true
+- name: lora_pyramid_demod_0
+  id: lora_pyramid_demod
+  parameters:
+    affinity: ''
+    alias: ''
+    beta: '25.0'
+    comment: ''
+    fft_factor: '8'
+    fs_bw_ratio: '2'
+    low_data_rate: ldr
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    spreading_factor: sf
+    threshold: '5'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [857, 182]
+    rotation: 0
+    state: true
+- name: low_pass_filter_0
+  id: low_pass_filter
+  parameters:
+    affinity: ''
+    alias: ''
+    beta: '6.76'
+    comment: ''
+    cutoff_freq: bw/2+10e3
+    decim: '1'
+    gain: '1'
+    interp: '1'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: samp_rate
+    type: fir_filter_ccf
+    width: 1e3
+    win: firdes.WIN_RECTANGULAR
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [335, 162]
+    rotation: 0
+    state: enabled
+- name: pfb_arb_resampler_xxx_0
+  id: pfb_arb_resampler_xxx
+  parameters:
+    affinity: ''
+    alias: ''
+    atten: '100'
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nfilts: '32'
+    rrate: 2*bw/samp_rate
+    samp_delay: '0'
+    taps: ''
+    type: ccf
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [524, 320]
+    rotation: 0
+    state: enabled
+
+connections:
+- [blocks_file_source_0, '0', blocks_throttle_0, '0']
+- [blocks_throttle_0, '0', low_pass_filter_0, '0']
+- [lora_decode_0, header, lora_pyramid_demod_0, header]
+- [lora_decode_0, out, blocks_message_debug_0, print_pdu]
+- [lora_decode_0, out, blocks_socket_pdu_0, pdus]
+- [lora_pyramid_demod_0, out, blocks_message_debug_0_0, print]
+- [lora_pyramid_demod_0, out, lora_decode_0, in]
+- [low_pass_filter_0, '0', pfb_arb_resampler_xxx_0, '0']
+- [pfb_arb_resampler_xxx_0, '0', lora_pyramid_demod_0, '0']
+
+metadata:
+  file_format: 1

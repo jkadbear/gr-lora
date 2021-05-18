@@ -25,11 +25,7 @@
 #include <lora/api.h>
 #include <gnuradio/block.h>
 
-#define DEMOD_HISTORY_DEPTH        3
-#define REQUIRED_PREAMBLE_CHIRPS   4
-#define REQUIRED_SFD_CHIRPS        2
-#define LORA_PREAMBLE_TOLERANCE    1
-#define DEMOD_SYNC_RECOVERY_COUNT  (8-REQUIRED_PREAMBLE_CHIRPS)+(2-REQUIRED_SFD_CHIRPS)+8
+#define PY_DEMOD_HISTORY_DEPTH        3
 
 #define TIMESTAMP_MOD              (1 << 28) // MAGIC
 
@@ -40,16 +36,6 @@
 
 namespace gr {
   namespace lora {
-
-    enum pyramid_demod_state_t {
-      PS_RESET,
-      PS_PREFILL,
-      PS_DETECT_PREAMBLE,
-      PS_SFD_SYNC,
-      PS_READ_HEADER,
-      PS_READ_PAYLOAD,
-      PS_OUT
-    };
 
     /*!
      * \brief <+description of block+>

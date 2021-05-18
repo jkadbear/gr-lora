@@ -1,0 +1,315 @@
+options:
+  parameters:
+    author: jkadbear
+    category: '[GRC Hier Blocks]'
+    cmake_opt: ''
+    comment: ''
+    copyright: ''
+    description: ''
+    gen_cmake: 'On'
+    gen_linking: dynamic
+    generate_options: qt_gui
+    hier_block_src_path: '.:'
+    id: rx_usrp
+    max_nouts: '0'
+    output_language: python
+    placement: (0,0)
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    run_options: prompt
+    sizing_mode: fixed
+    thread_safe_setters: ''
+    title: Rx Collision
+    window_size: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [8, 12.0]
+    rotation: 0
+    state: enabled
+
+blocks:
+- name: bw
+  id: variable
+  parameters:
+    comment: ''
+    value: 500e3/4
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [574, 11]
+    rotation: 0
+    state: enabled
+- name: cr
+  id: variable
+  parameters:
+    comment: ''
+    value: '4'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [908, 13]
+    rotation: 180
+    state: enabled
+- name: crc
+  id: variable
+  parameters:
+    comment: ''
+    value: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [801, 12]
+    rotation: 180
+    state: enabled
+- name: freq
+  id: variable
+  parameters:
+    comment: ''
+    value: 470e6
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [360, 12.0]
+    rotation: 0
+    state: enabled
+- name: header
+  id: variable
+  parameters:
+    comment: ''
+    value: 'True'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1139, 12]
+    rotation: 180
+    state: enabled
+- name: ldr
+  id: variable
+  parameters:
+    comment: ''
+    value: 2**sf/bw > 16e-3
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [688, 12]
+    rotation: 180
+    state: enabled
+- name: payload_len
+  id: variable
+  parameters:
+    comment: ''
+    value: '8'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1006, 12]
+    rotation: 180
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: 1e6
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [240, 12.0]
+    rotation: 0
+    state: enabled
+- name: sf
+  id: variable
+  parameters:
+    comment: ''
+    value: '8'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [476, 12]
+    rotation: 0
+    state: enabled
+- name: blocks_file_source_0
+  id: blocks_file_source
+  parameters:
+    affinity: ''
+    alias: ''
+    begin_tag: pmt.PMT_NIL
+    comment: ''
+    file: /src/signals/sf8_bw125_cr45
+    length: '0'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    offset: '0'
+    repeat: 'False'
+    type: complex
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [11, 320]
+    rotation: 0
+    state: enabled
+- name: blocks_message_debug_0
+  id: blocks_message_debug
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1398, 176]
+    rotation: 0
+    state: enabled
+- name: blocks_message_debug_0_0
+  id: blocks_message_debug
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1127, 109]
+    rotation: 0
+    state: disabled
+- name: blocks_socket_pdu_0
+  id: blocks_socket_pdu
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    host: 127.0.0.1
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    mtu: '10000'
+    port: '52002'
+    tcp_no_delay: 'False'
+    type: UDP_CLIENT
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1378, 360]
+    rotation: 0
+    state: enabled
+- name: lora_decode_0
+  id: lora_decode
+  parameters:
+    affinity: ''
+    alias: ''
+    code_rate: cr
+    comment: ''
+    crc: crc
+    header: header
+    low_data_rate: ldr
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    payload_len: payload_len
+    spreading_factor: sf
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1081, 263]
+    rotation: 0
+    state: true
+- name: lora_demod_1
+  id: lora_demod
+  parameters:
+    affinity: ''
+    alias: ''
+    beta: '25.0'
+    code_rate: cr
+    comment: ''
+    crc: crc
+    fft_factor: '8'
+    fs_bw_ratio: '2'
+    header: header
+    low_data_rate: ldr
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    payload_len: payload_len
+    peak_search_algorithm: '0'
+    peak_search_phase_k: '4'
+    spreading_factor: sf
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [773, 103]
+    rotation: 0
+    state: true
+- name: low_pass_filter_0
+  id: low_pass_filter
+  parameters:
+    affinity: ''
+    alias: ''
+    beta: '6.76'
+    comment: ''
+    cutoff_freq: bw/2+10e3
+    decim: '1'
+    gain: '1'
+    interp: '1'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: samp_rate
+    type: fir_filter_ccf
+    width: 1e3
+    win: firdes.WIN_RECTANGULAR
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [244, 128]
+    rotation: 0
+    state: enabled
+- name: pfb_arb_resampler_xxx_0
+  id: pfb_arb_resampler_xxx
+  parameters:
+    affinity: ''
+    alias: ''
+    atten: '100'
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nfilts: '32'
+    rrate: 2*bw/samp_rate
+    samp_delay: '0'
+    taps: ''
+    type: ccf
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [439, 328]
+    rotation: 0
+    state: enabled
+
+connections:
+- [blocks_file_source_0, '0', low_pass_filter_0, '0']
+- [lora_decode_0, header, lora_demod_1, header]
+- [lora_decode_0, out, blocks_message_debug_0, print_pdu]
+- [lora_decode_0, out, blocks_socket_pdu_0, pdus]
+- [lora_demod_1, out, blocks_message_debug_0_0, print]
+- [lora_demod_1, out, lora_decode_0, in]
+- [low_pass_filter_0, '0', pfb_arb_resampler_xxx_0, '0']
+- [pfb_arb_resampler_xxx_0, '0', lora_demod_1, '0']
+
+metadata:
+  file_format: 1

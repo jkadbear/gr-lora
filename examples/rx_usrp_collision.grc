@@ -21,7 +21,7 @@ options:
     run_options: prompt
     sizing_mode: fixed
     thread_safe_setters: ''
-    title: Rx USRP
+    title: Rx Collision
     window_size: ''
   states:
     bus_sink: false
@@ -41,7 +41,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [584, 12.0]
+    coordinate: [578, 11]
     rotation: 0
     state: enabled
 - name: cr
@@ -77,7 +77,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [369, 12]
+    coordinate: [360, 12.0]
     rotation: 0
     state: enabled
 - name: header
@@ -125,7 +125,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [242, 12]
+    coordinate: [240, 12.0]
     rotation: 0
     state: enabled
 - name: sf
@@ -137,7 +137,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [486, 12]
+    coordinate: [476, 12]
     rotation: 0
     state: enabled
 - name: blocks_message_debug_0
@@ -150,7 +150,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1386, 172]
+    coordinate: [1385, 169]
     rotation: 0
     state: enabled
 - name: blocks_message_debug_0_0
@@ -183,7 +183,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1363, 381]
+    coordinate: [1363, 362]
     rotation: 0
     state: enabled
 - name: lora_decode_0
@@ -204,35 +204,30 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1088, 280]
+    coordinate: [1086, 269]
     rotation: 0
-    state: enabled
-- name: lora_demod_0
-  id: lora_demod
+    state: true
+- name: lora_pyramid_demod_0
+  id: lora_pyramid_demod
   parameters:
     affinity: ''
     alias: ''
     beta: '25.0'
-    code_rate: cr
     comment: ''
-    crc: crc
-    fft_factor: '16'
+    fft_factor: '4'
     fs_bw_ratio: '2'
-    header: header
     low_data_rate: ldr
     maxoutbuf: '0'
     minoutbuf: '0'
-    payload_len: payload_len
-    peak_search_algorithm: '0'
-    peak_search_phase_k: '4'
     spreading_factor: sf
+    threshold: '0.005'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [806, 116]
+    coordinate: [807, 160]
     rotation: 0
-    state: enabled
+    state: true
 - name: low_pass_filter_0
   id: low_pass_filter
   parameters:
@@ -254,7 +249,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [316, 137]
+    coordinate: [315, 134]
     rotation: 0
     state: enabled
 - name: pfb_arb_resampler_xxx_0
@@ -275,7 +270,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [488, 340]
+    coordinate: [476, 323]
     rotation: 0
     state: enabled
 - name: uhd_usrp_source_0
@@ -421,9 +416,9 @@ blocks:
     dc_offs_enb7: '""'
     dc_offs_enb8: '""'
     dc_offs_enb9: '""'
-    dev_addr: addr=192.168.10.11
-    dev_args: '""'
-    gain0: '1'
+    dev_addr: addr=192.168.10.4
+    dev_args: ''
+    gain0: '10'
     gain1: '0'
     gain10: '0'
     gain11: '0'
@@ -646,18 +641,18 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [75, 298]
+    coordinate: [74, 280]
     rotation: 0
     state: enabled
 
 connections:
-- [lora_decode_0, header, lora_demod_0, header]
+- [lora_decode_0, header, lora_pyramid_demod_0, header]
 - [lora_decode_0, out, blocks_message_debug_0, print_pdu]
 - [lora_decode_0, out, blocks_socket_pdu_0, pdus]
-- [lora_demod_0, out, blocks_message_debug_0_0, print]
-- [lora_demod_0, out, lora_decode_0, in]
+- [lora_pyramid_demod_0, out, blocks_message_debug_0_0, print]
+- [lora_pyramid_demod_0, out, lora_decode_0, in]
 - [low_pass_filter_0, '0', pfb_arb_resampler_xxx_0, '0']
-- [pfb_arb_resampler_xxx_0, '0', lora_demod_0, '0']
+- [pfb_arb_resampler_xxx_0, '0', lora_pyramid_demod_0, '0']
 - [uhd_usrp_source_0, '0', low_pass_filter_0, '0']
 
 metadata:

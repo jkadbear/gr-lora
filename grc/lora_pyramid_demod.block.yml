@@ -33,6 +33,8 @@ parameters:
 inputs:
 -   domain: stream
     dtype: complex
+-   domain: message
+    id: header
 
 outputs:
 -   domain: message

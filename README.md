@@ -12,7 +12,7 @@ A MATLAB script for prototype verification is also provided ([LoRaPHY](https://g
 The easiest way to install `gr-lora` is using docker. Simply run
 ```
 git clone https://github.com/jkadbear/gr-lora.git .
-./docker_run.sh
+./docker_run.sh # or sudo ./docker_run.sh
 ```
 
 The script will download the docker container and show you a shell with `gr-lora` installed:

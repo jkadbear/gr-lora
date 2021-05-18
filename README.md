@@ -1,10 +1,11 @@
 # gr-lora
-This is the first open-source implementation of real-time LoRa PHY collision decoding.
+This is the first open-source implementation of real-time [LoRa](https://en.wikipedia.org/wiki/LoRa) PHY collision decoding.
 The collision decoding algorithm **Pyramid** used here comes from the following paper:
 
 > Xu, Zhenqiang and Xie, Pengjin and Wang, Jiliang. Pyramid: Real-Time LoRa Collision Decoding with Peak Tracking. In Proceedings of IEEE INFOCOM. 2021.
 
 This work is developed based on Matt Knight's [gr-lora](https://github.com/jkadbear/gr-lora) with many improvements on reverse engineering.
+A MATLAB script for prototype verification is also provided ([LoRaPHY](https://github.com/jkadbear/LoRaPHY)).
 
 ## Installation
 ### Docker Installation

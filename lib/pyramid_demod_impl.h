@@ -44,20 +44,20 @@ namespace gr {
     };
 
     struct peak {
-      unsigned int     ts;     // timestamp
-      unsigned int     bin;    // peak position bin
+      uint32_t     ts;     // timestamp
+      uint32_t     bin;    // peak position bin
       float            h;      // peak height
       float            h_single;     // single peak height
-      peak(unsigned int ts, unsigned int bin, float h, float h_single)
+      peak(uint32_t ts, uint32_t bin, float h, float h_single)
         : ts(ts), bin(bin), h(h), h_single(h_single)
       {}
     };
 
     struct bin_track_id {
-      unsigned int     bin;           // peak bin
-      unsigned short   track_id;      // index to reference peak_track
+      uint32_t     bin;           // peak bin
+      uint16_t   track_id;      // index to reference peak_track
       bool             updated;       // whether a peak tracking process is over
-      bin_track_id(unsigned int bin, unsigned short track_id, bool updated)
+      bin_track_id(uint32_t bin, uint16_t track_id, bool updated)
         : bin(bin), track_id(track_id), updated(updated)
       {}
       // bin_track_id(bin_track_id && other)
@@ -67,9 +67,9 @@ namespace gr {
     };
 
     struct packet_state {
-      unsigned short   packet_id;     // index to reference packet list
+      uint16_t   packet_id;     // index to reference packet list
       short   ttl;           // time to live
-      packet_state(unsigned short packet_id, unsigned short ttl)
+      packet_state(uint16_t packet_id, uint16_t ttl)
         : packet_id(packet_id), ttl(ttl)
       {}
     };
@@ -80,40 +80,40 @@ namespace gr {
       pmt::pmt_t d_header_port;
       pmt::pmt_t d_out_port;
 
-      unsigned short  d_sf;
+      uint16_t  d_sf;
       bool d_ldr;
 
-      unsigned short  d_num_symbols;
-      unsigned short  d_fft_size_factor;
-      unsigned int    d_fft_size;
-      unsigned short  d_overlaps;
+      uint16_t  d_num_symbols;
+      uint16_t  d_fft_size_factor;
+      uint32_t    d_fft_size;
+      uint16_t  d_overlaps;
       short           d_ttl;
-      unsigned short  d_bin_tolerance;
-      unsigned short  d_offset;
-      unsigned short  d_p;
-      unsigned int    d_num_samples;
-      unsigned int    d_bin_size;
-      unsigned short  d_num_preamble;
+      uint16_t  d_bin_tolerance;
+      uint16_t  d_offset;
+      uint16_t  d_p;
+      uint32_t    d_num_samples;
+      uint32_t    d_bin_size;
+      uint16_t  d_num_preamble;
 
       float           d_cfo;
       float           d_power;
       float           d_threshold;
       bool            d_squelched;
 
-      unsigned int    d_preamble_idx;
-      unsigned short  d_sfd_idx;
-      std::vector<unsigned int>  d_argmax_history;
-      std::vector<unsigned short>  d_sfd_history;
-      unsigned short  d_sync_recovery_counter;
+      uint32_t    d_preamble_idx;
+      uint16_t  d_sfd_idx;
+      std::vector<uint32_t>  d_argmax_history;
+      std::vector<uint16_t>  d_sfd_history;
+      uint16_t  d_sync_recovery_counter;
 
-      unsigned int    d_bin_ref;
-      unsigned int    d_ts_ref;
+      uint32_t    d_bin_ref;
+      uint32_t    d_ts_ref;
       std::vector<std::vector<peak>>        d_track;
       std::vector<bin_track_id>             d_bin_track_id_list;
-      std::deque<unsigned short>            d_track_id_pool;
+      std::deque<uint16_t>            d_track_id_pool;
       std::vector<std::vector<peak>>        d_packet;
       std::vector<packet_state>             d_packet_state_list;
-      std::deque<unsigned short>            d_packet_id_pool;
+      std::deque<uint16_t>            d_packet_id_pool;
 
       fft::fft_complex   *d_fft;
       std::vector<float> d_window;
@@ -122,28 +122,28 @@ namespace gr {
       std::vector<gr_complex> d_upchirp;
       std::vector<gr_complex> d_downchirp;
 
-      std::vector<unsigned short> d_symbols;
+      std::vector<uint16_t> d_symbols;
 
       std::ofstream f_raw, f_up_windowless, f_up, f_down, f_fft;
 
      public:
-      pyramid_demod_impl(unsigned short spreading_factor,
+      pyramid_demod_impl(uint16_t spreading_factor,
                          bool low_data_rate,
                          float beta,
-                         unsigned short fft_factor,
+                         uint16_t fft_factor,
                          float threshold,
                          float fs_bw_ratio);
       ~pyramid_demod_impl();
 
-      unsigned short argmax(gr_complex *fft_result, bool update_squelch);
-      unsigned int argmax_32f(float *fft_result, bool update_squelch, float *max_val_p);
-      float get_dis(unsigned int ts1, float h1, unsigned int ts2, float h2);
+      uint16_t argmax(gr_complex *fft_result, bool update_squelch);
+      uint32_t argmax_32f(float *fft_result, bool update_squelch, float *max_val_p);
+      float get_dis(uint32_t ts1, float h1, uint32_t ts2, float h2);
 
       // void parse_header(pmt::pmt_t dict);
 
       void find_and_add_peak(float *fft_mag_add, float *fft_mag_add_w, float *fft_mag);
       void get_apex(std::vector<peak> & track, peak & pk, bool is_preamble=false);
-      symbol_type get_central_peak(unsigned short track_id, peak & pk);
+      symbol_type get_central_peak(uint16_t track_id, peak & pk);
       bool add_symbol_to_packet(peak & pk, symbol_type st);
       void check_and_update_track();
 

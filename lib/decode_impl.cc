@@ -48,12 +48,12 @@ namespace gr {
   namespace lora {
 
     decode::sptr
-    decode::make( short spreading_factor,
-                  bool  header,
-                  short payload_len,
-                  short code_rate,
-                  bool  crc,
-                  bool  low_data_rate)
+    decode::make( int8_t  spreading_factor,
+                  bool    header,
+                  int16_t payload_len,
+                  int8_t  code_rate,
+                  bool    crc,
+                  bool    low_data_rate)
     {
       return gnuradio::get_initial_sptr
         (new decode_impl(spreading_factor, header, payload_len, code_rate, crc, low_data_rate));
@@ -111,7 +111,7 @@ namespace gr {
     }
 
     void
-    decode_impl::to_gray(std::vector<unsigned short> &symbols)
+    decode_impl::to_gray(std::vector<uint16_t> &symbols)
     {
       for (int i = 0; i < symbols.size(); i++)
       {
@@ -120,7 +120,7 @@ namespace gr {
     }
 
     void
-    decode_impl::from_gray(std::vector<unsigned short> &symbols)
+    decode_impl::from_gray(std::vector<uint16_t> &symbols)
     {
       for (int i = 0; i < symbols.size(); i++)
       {
@@ -157,7 +157,7 @@ namespace gr {
     // bit width in:  ppm       block length: (4+rdd)
     // bit width out: (4+rdd)   block length: ppm
     void
-    decode_impl::deinterleave(std::vector <unsigned short> &symbols,
+    decode_impl::deinterleave(std::vector <uint16_t> &symbols,
                               std::vector <unsigned char> &codewords,
                               unsigned char ppm,
                               unsigned char rdd)
@@ -246,7 +246,7 @@ namespace gr {
       std::cout << "Received LoRa packet (hex): ";
       for (int i = 0; i < payload.size(); i++)
       {
-        std::cout << std::hex << (unsigned int)payload[i] << " ";
+        std::cout << std::hex << (uint32_t)payload[i] << " ";
       }
       std::cout << std::endl;
     }
@@ -262,7 +262,7 @@ namespace gr {
     }
 
     void
-    decode_impl::print_bitwise_u16(std::vector<unsigned short> &buffer)
+    decode_impl::print_bitwise_u16(std::vector<uint16_t> &buffer)
     {
       for (int i = 0; i < buffer.size(); i++)
       {
@@ -283,16 +283,16 @@ namespace gr {
       size_t pkt_len(0);
       const uint16_t* symbols_v = pmt::u16vector_elements(symbols, pkt_len);
 
-      std::vector<unsigned short> symbols_in;
-      std::vector<unsigned short> header_symbols_in;
-      std::vector<unsigned short> payload_symbols_in;
+      std::vector<uint16_t> symbols_in;
+      std::vector<uint16_t> header_symbols_in;
+      std::vector<uint16_t> payload_symbols_in;
       std::vector<unsigned char> codewords;
       std::vector<unsigned char> nibbles;
       std::vector<unsigned char> combined_bytes;
 
       short bin_offset = 0;
-      unsigned short last_rem;
-      unsigned short this_rem;
+      uint16_t last_rem;
+      uint16_t this_rem;
 
       symbols_in.clear();
 

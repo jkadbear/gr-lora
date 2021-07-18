@@ -49,12 +49,12 @@ namespace gr {
        * class. lora::decode::make is the public interface for
        * creating new instances.
        */
-      static sptr make( short spreading_factor,
-                        bool  header,
-                        short payload_len,
-                        short code_rate,
-                        bool  crc,
-                        bool  low_data_rate);
+      static sptr make( int8_t  spreading_factor,
+                        bool    header,
+                        int16_t payload_len,
+                        int8_t  code_rate,
+                        bool    crc,
+                        bool    low_data_rate);
     };
 
   } // namespace lora

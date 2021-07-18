@@ -42,7 +42,7 @@ namespace gr {
       unsigned char d_sf;
       unsigned char d_sync_word;
 
-      unsigned short d_fft_size;
+      uint16_t d_fft_size;
       unsigned char  d_interleaver_size;
 
       std::vector<gr_complex> d_upchirp;

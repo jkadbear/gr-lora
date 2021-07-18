@@ -145,7 +145,7 @@ namespace gr {
                        gr_vector_void_star &output_items)
     {
       gr_complex *out = (gr_complex *) output_items[0];
-      unsigned int noutput_samples = (noutput_items > d_iq_out.size()) ? d_iq_out.size() : noutput_items;
+      uint32_t noutput_samples = (noutput_items > d_iq_out.size()) ? d_iq_out.size() : noutput_items;
 
       if (noutput_samples)
       {

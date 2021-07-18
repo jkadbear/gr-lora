@@ -36,7 +36,7 @@ parameters:
 -   id: fft_factor
     label: FFT Size Factor
     dtype: int
-    default: '2'
+    default: '10'
 -   id: peak_search_algorithm
     label: Peak Search Algorithm
     dtype: enum

@@ -29,6 +29,7 @@ list(APPEND lora_sources
     pyramid_demod_impl.cc
     decode_impl.cc
     encode_impl.cc
+    weak_demod_impl.cc
 )
 
 set(lora_sources "${lora_sources}" PARENT_SCOPE)

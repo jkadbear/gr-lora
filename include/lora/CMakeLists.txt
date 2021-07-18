@@ -27,5 +27,6 @@ install(FILES
     mod.h
     pyramid_demod.h
     decode.h
-    encode.h DESTINATION include/lora
+    encode.h
+    weak_demod.h DESTINATION include/lora
 )

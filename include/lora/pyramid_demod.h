@@ -55,10 +55,10 @@ namespace gr {
        * class. lora::pyramid_demod::make is the public interface for
        * creating new instances.
        */
-      static sptr make( unsigned short spreading_factor,
+      static sptr make( uint8_t spreading_factor,
                         bool  low_data_rate,
                         float beta,
-                        unsigned short fft_factor,
+                        uint16_t fft_factor,
                         float threshold,
                         float fs_bw_ratio);
     };

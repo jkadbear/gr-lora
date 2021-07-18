@@ -32,7 +32,7 @@ namespace gr {
      *  \param  n
      *          divisor
      */
-    inline unsigned int pmod(int x, unsigned int n)
+    inline uint32_t pmod(int32_t x, int32_t n)
     {
       return ((x % n) + n) % n;
     }
@@ -156,6 +156,25 @@ namespace gr {
 
       *k = numerator / denominator;
       *b = avg_y - *k * avg_x;
+    }
+
+    inline uint32_t argmax_32f(float *res, float *p_max_val, uint32_t len)
+    {
+      float mag = abs(res[0]);
+      uint32_t max_idx = 0;
+
+      *p_max_val = mag;
+      for (int i = 1; i < len; i++)
+      {
+        mag = abs(res[i]);
+        if (mag > *p_max_val)
+        {
+          max_idx = i;
+          *p_max_val = mag;
+        }
+      }
+
+      return max_idx;
     }
   }
 }

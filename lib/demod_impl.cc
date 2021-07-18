@@ -111,7 +111,7 @@ namespace gr {
 
       d_num_symbols = (1 << d_sf);
       d_num_samples = d_p*d_num_symbols;
-      d_bin_len = d_fft_size_factor*d_num_symbols;
+      d_bin_size = d_fft_size_factor*d_num_symbols;
       d_fft_size = d_fft_size_factor*d_num_samples;
       d_fft = new fft::fft_complex(d_fft_size, true, 1);
       d_overlaps = OVERLAP_DEFAULT;
@@ -138,14 +138,14 @@ namespace gr {
       delete d_fft;
     }
 
-    unsigned int
+    uint32_t
     demod_impl::argmax_32f(float *fft_result, float *max_val_p)
     {
       float mag   = abs(fft_result[0]);
       float max_val = mag;
-      unsigned int   max_idx = 0;
+      uint32_t   max_idx = 0;
 
-      for (unsigned int i = 0; i < d_bin_len; i++)
+      for (uint32_t i = 0; i < d_bin_size; i++)
       {
         mag = abs(fft_result[i]);
         if (mag > max_val)
@@ -159,28 +159,28 @@ namespace gr {
       return max_idx;
     }
 
-    unsigned int
+    uint32_t
     demod_impl::search_fft_peak(const lv_32fc_t *fft_result,
                                 float *buffer1, float *buffer2,
                                 gr_complex *buffer_c, float *max_val_p)
     {
       // size of buffer1:   d_fft_size (float)
-      // size of buffer2:   d_bin_len  (float)
-      // size of buffer_c:  d_bin_len  (complex)
-      unsigned int max_idx = 0;
+      // size of buffer2:   d_bin_size  (float)
+      // size of buffer_c:  d_bin_size  (complex)
+      uint32_t max_idx = 0;
       *max_val_p = 0;
       if (d_peak_search_algorithm == FFT_PEAK_SEARCH_ABS)
       {
         // fft result magnitude summation
         volk_32fc_magnitude_32f(buffer1, fft_result, d_fft_size);
-        volk_32f_x2_add_32f(buffer2, buffer1, &buffer1[d_fft_size-d_bin_len], d_bin_len);
+        volk_32f_x2_add_32f(buffer2, buffer1, &buffer1[d_fft_size-d_bin_size], d_bin_size);
 
         // Take argmax of returned FFT (similar to MFSK demod)
         max_idx = argmax_32f(buffer2, max_val_p);
       }
       else if (d_peak_search_algorithm == FFT_PEAK_SEARCH_PHASE)
       {
-        unsigned int tmp_max_idx;
+        uint32_t tmp_max_idx;
         float tmp_max_val;
         for (int i = 0; i < d_peak_search_phase_k; i++)
         {
@@ -201,26 +201,26 @@ namespace gr {
       return max_idx;
     }
 
-    unsigned int
+    uint32_t
     demod_impl::fft_add(const lv_32fc_t *fft_result, float *buffer, gr_complex *buffer_c,
                         float *max_val_p, float phase_offset)
     {
       lv_32fc_t s = lv_cmake((float)std::cos(phase_offset), (float)std::sin(phase_offset));
-      volk_32fc_s32fc_multiply_32fc(buffer_c, fft_result, s, d_bin_len);
-      volk_32fc_x2_add_32fc(buffer_c, buffer_c, &fft_result[d_fft_size-d_bin_len], d_bin_len);
-      volk_32fc_magnitude_32f(buffer, buffer_c, d_bin_len);
+      volk_32fc_s32fc_multiply_32fc(buffer_c, fft_result, s, d_bin_size);
+      volk_32fc_x2_add_32fc(buffer_c, buffer_c, &fft_result[d_fft_size-d_bin_size], d_bin_size);
+      volk_32fc_magnitude_32f(buffer, buffer_c, d_bin_size);
       return argmax_32f(buffer, max_val_p); 
     }
 
-    unsigned short
+    uint16_t
     demod_impl::argmax(gr_complex *fft_result)
     {
       float magsq   = pow(real(fft_result[0]), 2) + pow(imag(fft_result[0]), 2);
       float max_val = magsq;
-      unsigned short   max_idx = 0;
+      uint16_t   max_idx = 0;
 
 
-      for (unsigned short i = 0; i < d_fft_size; i++)
+      for (uint16_t i = 0; i < d_fft_size; i++)
       {
         magsq = pow(real(fft_result[i]), 2) + pow(imag(fft_result[i]), 2);
         if (magsq > max_val)
@@ -263,12 +263,11 @@ namespace gr {
     void
     demod_impl::dynamic_compensation(std::vector<uint16_t>& compensated_symbols)
     {
-      float modulus   = d_ldr ? 4.0 : 1.0;
+      float modulus   = 4.0;
       float bin_drift = 0;
       float bin_comp  = 0;
       float v         = 0;
       float v_last    = 1;
-
       for (int i = 0; i < d_symbols.size(); i++)
       {
         v = d_symbols[i];
@@ -278,6 +277,7 @@ namespace gr {
         // compensate bin drift
         if (bin_drift < modulus / 2) bin_comp -= bin_drift;
         else bin_comp -= (bin_drift - modulus);
+        bin_comp = d_ldr ? bin_comp : 0;
         v_last = v;
         compensated_symbols.push_back(gr::lora::pmod(round(gr::lora::fpmod(v + bin_comp, d_num_symbols)), d_num_symbols));
       }
@@ -299,12 +299,12 @@ namespace gr {
       if (ninput_items[0] < DEMOD_HISTORY_DEPTH*d_num_samples) return 0;
       const gr_complex *in0 = (const gr_complex *) input_items[0];
       const gr_complex *in  = &in0[(DEMOD_HISTORY_DEPTH-1)*d_num_samples];
-      unsigned int  *out    = (unsigned int   *) output_items[0];
+      uint32_t  *out    = (uint32_t   *) output_items[0];
 
 
-      unsigned int num_consumed   = d_num_samples;
-      unsigned int max_idx        = 0;
-      unsigned int max_idx_sfd    = 0;
+      uint32_t num_consumed   = d_num_samples;
+      uint32_t max_idx        = 0;
+      uint32_t max_idx_sfd    = 0;
       bool         preamble_found = false;
       bool         sfd_found      = false;
       float        max_val        = 0;
@@ -313,14 +313,13 @@ namespace gr {
       // Nomenclature:
       //  up_block   == de-chirping buffer to contain upchirp features: the preamble, sync word, and data chirps
       //  down_block == de-chirping buffer to contain downchirp features: the SFD
-      gr_complex *buffer     = (gr_complex *)volk_malloc(d_fft_size*sizeof(gr_complex), volk_get_alignment());
       gr_complex *up_block   = (gr_complex *)volk_malloc(d_fft_size*sizeof(gr_complex), volk_get_alignment());
       gr_complex *down_block = (gr_complex *)volk_malloc(d_fft_size*sizeof(gr_complex), volk_get_alignment());
       float *fft_res_mag = (float*)volk_malloc(d_fft_size*sizeof(float), volk_get_alignment());
-      float *fft_res_add = (float*)volk_malloc(d_bin_len*sizeof(float), volk_get_alignment());
-      gr_complex *fft_res_add_c = (gr_complex*)volk_malloc(d_bin_len*sizeof(gr_complex), volk_get_alignment());
+      float *fft_res_add = (float*)volk_malloc(d_bin_size*sizeof(float), volk_get_alignment());
+      gr_complex *fft_res_add_c = (gr_complex*)volk_malloc(d_bin_size*sizeof(gr_complex), volk_get_alignment());
 
-      if (buffer == NULL || up_block == NULL || down_block == NULL ||
+      if (up_block == NULL || down_block == NULL ||
           fft_res_mag == NULL || fft_res_add == NULL || fft_res_add_c == NULL)
       {
         std::cerr << "Unable to allocate processing buffer!" << std::endl;
@@ -416,8 +415,8 @@ namespace gr {
         preamble_found = true;
         for (int i = 1; i < REQUIRED_PREAMBLE_CHIRPS; i++)
         {
-          unsigned int dis = gr::lora::pmod(int(d_preamble_idx) - int(d_argmax_history[i]), d_fft_size);
-          if (dis > d_preamble_drift_max && dis < d_fft_size-d_preamble_drift_max)
+          uint32_t dis = gr::lora::pmod(int(d_preamble_idx) - int(d_argmax_history[i]), d_bin_size);
+          if (dis > d_preamble_drift_max && dis < d_bin_size-d_preamble_drift_max)
           {
             preamble_found = false;
           }
@@ -477,10 +476,10 @@ namespace gr {
         if (max_val_sfd > max_val)
         {
           int idx = max_idx_sfd;
-          if (max_idx_sfd > d_bin_len / 2) {
-            idx = max_idx_sfd - d_bin_len;
+          if (max_idx_sfd > d_bin_size / 2) {
+            idx = max_idx_sfd - d_bin_size;
           }
-          num_consumed = (int)round((2.25*d_num_samples + d_p*idx/2.0/d_fft_size_factor));
+          num_consumed = (int)round(2.25*d_num_samples + d_p*idx/2.0/d_fft_size_factor);
 
           // refine CFO
           volk_32fc_x2_multiply_32fc(up_block, 
@@ -621,7 +620,6 @@ namespace gr {
 
       volk_free(down_block);
       volk_free(up_block);
-      volk_free(buffer);
       volk_free(fft_res_mag);
       volk_free(fft_res_add);
       volk_free(fft_res_add_c);

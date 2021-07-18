@@ -112,7 +112,7 @@ namespace gr
     }
 
     void
-    encode_impl::to_gray(std::vector<unsigned short> &symbols)
+    encode_impl::to_gray(std::vector<uint16_t> &symbols)
     {
       for (int i = 0; i < symbols.size(); i++)
       {
@@ -121,7 +121,7 @@ namespace gr
     }
 
     void
-    encode_impl::from_gray(std::vector<unsigned short> &symbols)
+    encode_impl::from_gray(std::vector<uint16_t> &symbols)
     {
       for (int i = 0; i < symbols.size(); i++)
       {
@@ -154,7 +154,7 @@ namespace gr
     }
 
     void
-    encode_impl::print_bitwise_u16(std::vector<unsigned short> &buffer)
+    encode_impl::print_bitwise_u16(std::vector<uint16_t> &buffer)
     {
       for (int i = 0; i < buffer.size(); i++)
       {
@@ -171,7 +171,7 @@ namespace gr
     // bit width out: ppm       block length: (4+rdd)
     void
     encode_impl::interleave(std::vector<unsigned char> &codewords,
-                            std::vector<unsigned short> &symbols)
+                            std::vector<uint16_t> &symbols)
     {
       uint32_t bits_per_word = 8;
       uint8_t ppm = d_sf - 2;
@@ -269,7 +269,7 @@ namespace gr
       std::cout << "Encoded LoRa packet (hex): ";
       for (int i = 0; i < payload.size(); i++)
       {
-        std::cout << std::hex << (unsigned int)payload[i] << " ";
+        std::cout << std::hex << (uint32_t)payload[i] << " ";
       }
       std::cout << std::endl;
     }

@@ -44,7 +44,7 @@ namespace gr {
       bool          d_ldr;
       bool          d_header;
 
-      unsigned short d_fft_size;
+      uint16_t d_fft_size;
       unsigned char  d_interleaver_size;
 
      public:
@@ -57,16 +57,16 @@ namespace gr {
 
       void gen_header(std::vector<unsigned char> &nibbheader_nibblesles, uint8_t payload_len);
       uint16_t calc_sym_num(uint8_t payload_len);
-      void to_gray(std::vector<unsigned short> &symbols);
-      void from_gray(std::vector<unsigned short> &symbols);
+      void to_gray(std::vector<uint16_t> &symbols);
+      void from_gray(std::vector<uint16_t> &symbols);
       void whiten(std::vector<unsigned char> &bytes, uint8_t len);
-      void interleave(std::vector<unsigned char> &codewords, std::vector<unsigned short> &symbols);
+      void interleave(std::vector<unsigned char> &codewords, std::vector<uint16_t> &symbols);
       void hamming_encode(std::vector<unsigned char> &nibbles, std::vector<unsigned char> &codewords);
       unsigned char parity(unsigned char c, unsigned char bitmask);
       void print_payload(std::vector<unsigned char> &payload);
 
       void print_bitwise_u8 (std::vector<unsigned char>  &buffer);
-      void print_bitwise_u16(std::vector<unsigned short> &buffer);
+      void print_bitwise_u16(std::vector<uint16_t> &buffer);
 
       void encode(pmt::pmt_t msg);
 

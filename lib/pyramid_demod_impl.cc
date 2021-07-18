@@ -39,10 +39,10 @@ namespace gr {
   namespace lora {
 
     pyramid_demod::sptr
-    pyramid_demod::make( unsigned short spreading_factor,
+    pyramid_demod::make( uint8_t spreading_factor,
                          bool  low_data_rate,
                          float beta,
-                         unsigned short fft_factor,
+                         uint16_t fft_factor,
                          float threshold,
                          float fs_bw_ratio)
     {
@@ -53,10 +53,10 @@ namespace gr {
     /*
      * The private constructor
      */
-    pyramid_demod_impl::pyramid_demod_impl( unsigned short spreading_factor,
+    pyramid_demod_impl::pyramid_demod_impl( uint16_t spreading_factor,
                             bool  low_data_rate,
                             float beta,
-                            unsigned short fft_factor,
+                            uint16_t fft_factor,
                             float threshold,
                             float fs_bw_ratio)
       : gr::block("pyramid_demod",
@@ -108,7 +108,7 @@ namespace gr {
         d_upchirp.push_back(gr_complex(std::polar(1.0, -phase)));
       }
 
-      unsigned short track_size = 1000; // MAGIC
+      uint16_t track_size = 1000; // MAGIC
       d_num_preamble = 6; // MAGIC
       d_track.resize(track_size);
       for (auto & v : d_track)
@@ -116,15 +116,15 @@ namespace gr {
         v.reserve(d_overlaps * (d_num_preamble + 2));
       }
       d_bin_track_id_list.reserve(track_size);
-      for (unsigned short i = 0; i < track_size; i++)
+      for (uint16_t i = 0; i < track_size; i++)
       {
         d_track_id_pool.push_back(i);
       }
 
-      unsigned short packet_id_size = 40; // MAGIC
+      uint16_t packet_id_size = 40; // MAGIC
       d_packet.resize(packet_id_size);
       d_packet_state_list.reserve(packet_id_size);
-      for (unsigned short i = 0; i < packet_id_size; i++)
+      for (uint16_t i = 0; i < packet_id_size; i++)
       {
         d_packet_id_pool.push_back(i);
       }
@@ -140,15 +140,15 @@ namespace gr {
       delete d_fft;
     }
 
-    unsigned int
+    uint32_t
     pyramid_demod_impl::argmax_32f(float *fft_result, 
                        bool update_squelch, float *max_val_p)
     {
       float mag   = abs(fft_result[0]);
       float max_val = mag;
-      unsigned int max_idx = 0;
+      uint32_t max_idx = 0;
 
-      for (unsigned int i = 0; i < d_bin_size; i++)
+      for (uint32_t i = 0; i < d_bin_size; i++)
       {
         mag = abs(fft_result[i]);
         if (mag > max_val)
@@ -162,16 +162,16 @@ namespace gr {
       return max_idx;
     }
 
-    unsigned short
+    uint16_t
     pyramid_demod_impl::argmax(gr_complex *fft_result, 
                        bool update_squelch)
     {
       float magsq   = pow(real(fft_result[0]), 2) + pow(imag(fft_result[0]), 2);
       float max_val = magsq;
-      unsigned short max_idx = 0;
+      uint16_t max_idx = 0;
 
 
-      for (unsigned short i = 0; i < d_fft_size; i++)
+      for (uint16_t i = 0; i < d_fft_size; i++)
       {
         magsq = pow(real(fft_result[i]), 2) + pow(imag(fft_result[i]), 2);
         if (magsq > max_val)
@@ -185,7 +185,7 @@ namespace gr {
     }
 
     float
-    pyramid_demod_impl::get_dis(unsigned int ts1, float h1, unsigned int ts2, float h2)
+    pyramid_demod_impl::get_dis(uint32_t ts1, float h1, uint32_t ts2, float h2)
     {
       float dis = gr::lora::pmod(ts1 - ts2, d_num_samples) / (float) d_num_samples;
       // In definition above, "dis->0" and "dis->1" both mean their timestamp differences to the actual timestamp is small
@@ -225,20 +225,20 @@ namespace gr {
     void
     pyramid_demod_impl::find_and_add_peak(float *fft_add, float *fft_add_w, float *fft_mag)
     {
-      for (unsigned int i = 0; i < d_bin_size; i++)
+      for (uint32_t i = 0; i < d_bin_size; i++)
       {
         // find peak: search local maximum larger than d_threshold
-        unsigned int l_idx = gr::lora::pmod(i-1, d_bin_size);
-        unsigned int r_idx = gr::lora::pmod(i+1, d_bin_size);
+        uint32_t l_idx = gr::lora::pmod(i-1, d_bin_size);
+        uint32_t r_idx = gr::lora::pmod(i+1, d_bin_size);
         if(fft_add_w[i] > d_threshold && fft_add_w[i] > fft_add_w[l_idx] && fft_add_w[i] > fft_add_w[r_idx])
         {
           // this is a peak, insert it into the peak track
-          unsigned int cur_bin = gr::lora::pmod(d_bin_size + i - d_bin_ref, d_bin_size);
+          uint32_t cur_bin = gr::lora::pmod(d_bin_size + i - d_bin_ref, d_bin_size);
           bool found = false;
-          unsigned short track_id;
+          uint16_t track_id;
           for (auto & bt: d_bin_track_id_list)
           {
-            unsigned int dis = gr::lora::pmod(d_bin_size + cur_bin - bt.bin, d_bin_size);
+            uint32_t dis = gr::lora::pmod(d_bin_size + cur_bin - bt.bin, d_bin_size);
             #if DEBUG >= DEBUG_VERBOSE_VERBOSE
               std::cout << "dis: " << dis << ", bt.bin: " << bt.bin << std::endl;
             #endif
@@ -280,8 +280,8 @@ namespace gr {
         h[i] = is_preamble ? track[i].h_single : track[i].h;
       }
       float max_h = h[0];
-      unsigned short idx = 0;
-      for (unsigned short i = 1; i < track.size(); i++)
+      uint16_t idx = 0;
+      for (uint16_t i = 1; i < track.size(); i++)
       {
         if (h[i] > max_h)
         {
@@ -303,7 +303,7 @@ namespace gr {
       }
       else
       {
-        unsigned short l_idx = h[idx-1] > h[idx+1] ? idx-1 : idx;
+        uint16_t l_idx = h[idx-1] > h[idx+1] ? idx-1 : idx;
         float k1, b1, k2, b2;
         linear_regression(h, 0, l_idx, &k1, &b1);
         linear_regression(h, l_idx+1, track.size()-1, &k2, &b2);
@@ -317,10 +317,10 @@ namespace gr {
     }
 
     symbol_type
-    pyramid_demod_impl::get_central_peak(unsigned short track_id, peak & pk)
+    pyramid_demod_impl::get_central_peak(uint16_t track_id, peak & pk)
     {
       auto track = d_track[track_id];
-      unsigned short len = track.size();
+      uint16_t len = track.size();
 
       #if DEBUG >= DEBUG_VERBOSE
         std::cout << "track id: " << track_id << ", peak height: ";
@@ -333,8 +333,8 @@ namespace gr {
       if (len >= d_overlaps*(d_num_preamble-1) + 2)
       {
         // // preamble
-        // unsigned short l_idx = len/2 - d_overlaps*(d_num_preamble-1)/2;
-        // unsigned short r_idx = (len-1)/2 + d_overlaps*(d_num_preamble-1)/2;
+        // uint16_t l_idx = len/2 - d_overlaps*(d_num_preamble-1)/2;
+        // uint16_t r_idx = (len-1)/2 + d_overlaps*(d_num_preamble-1)/2;
         // if (track[l_idx].h > track[r_idx].h)
         // {
         //   pk.ts  = track[l_idx].ts + d_num_samples/4 + (d_num_preamble-1)*d_num_samples;
@@ -348,7 +348,7 @@ namespace gr {
 
         // extract the last chirp of preamble
         // determine the timestamp of preamble through the single peak trajectory
-        unsigned short r_idx = track.size() - d_overlaps;
+        uint16_t r_idx = track.size() - d_overlaps;
         float max_h = -1;
         for (int i = r_idx; i < track.size(); i++)
         {
@@ -358,7 +358,7 @@ namespace gr {
             r_idx = i;
           }
         }
-        unsigned short start_idx = r_idx;
+        uint16_t start_idx = r_idx;
         for (; start_idx > r_idx - d_overlaps/2; start_idx--)
         {
           if (track[start_idx-1].h_single > track[start_idx].h_single
@@ -371,7 +371,7 @@ namespace gr {
         pk.ts = gr::lora::pmod(pk.ts + d_num_samples/4, TIMESTAMP_MOD);
 
         float sum = 0;
-        for (unsigned int i = d_overlaps*2; i < d_overlaps*(d_num_preamble-2); i++)
+        for (uint32_t i = d_overlaps*2; i < d_overlaps*(d_num_preamble-2); i++)
         {
           sum += track[i].h;
         }
@@ -403,7 +403,7 @@ namespace gr {
       if (st == SYMBOL_PREAMBLE)
       {
         // preamble detected, create a new packet
-        unsigned short pkt_id = d_packet_id_pool.front();
+        uint16_t pkt_id = d_packet_id_pool.front();
         d_packet_id_pool.pop_front();
         d_packet[pkt_id].push_back(pk);
         d_packet_state_list.push_back(packet_state(pkt_id, d_ttl));
@@ -414,16 +414,16 @@ namespace gr {
       }
       else if (st == SYMBOL_DATA)
       {
-        unsigned short pkt_idx  = 0;
-        unsigned short pkt_id   = 0;
+        uint16_t pkt_idx  = 0;
+        uint16_t pkt_id   = 0;
         float min_dis = std::numeric_limits<float>::infinity();
         bool found = false;
 
-        for (unsigned int i = 0; i < d_packet_state_list.size(); i++)
+        for (uint32_t i = 0; i < d_packet_state_list.size(); i++)
         {
           // put peak into the best matched packet
           auto const & ps = d_packet_state_list[i];
-          unsigned int ts_dis = gr::lora::pmod(pk.ts - d_packet[ps.packet_id][0].ts, TIMESTAMP_MOD);
+          uint32_t ts_dis = gr::lora::pmod(pk.ts - d_packet[ps.packet_id][0].ts, TIMESTAMP_MOD);
           // candidate symbols must have valid timestamp
           if (ts_dis > 4 * d_num_samples && ts_dis < TIMESTAMP_MOD / 2)
           {
@@ -539,12 +539,12 @@ namespace gr {
     {
       if (ninput_items[0] < 4*d_num_samples) return 0;
       const gr_complex *in        = (const gr_complex *)  input_items[0];
-      unsigned int  *out          = (unsigned int   *) output_items[0];
-      unsigned int num_consumed   = d_num_samples / d_overlaps;
+      uint32_t  *out          = (uint32_t   *) output_items[0];
+      uint32_t num_consumed   = d_num_samples / d_overlaps;
       float max_val               = 0;
-      unsigned int max_index_sfd  = 0;
+      uint32_t max_index_sfd  = 0;
       float max_val_sfd           = 0;
-      unsigned int tmp_idx        = 0;
+      uint32_t tmp_idx        = 0;
       // #if DEBUG >= DEBUG_VERBOSE
       //   std::cout << "d_num_samples: " << d_num_samples <<  ", d_overlaps: " << d_overlaps << ", num_consumed: " << num_consumed << ", ts: " << d_ts_ref << std::endl;
       // #endif
@@ -615,35 +615,35 @@ namespace gr {
         if (ps.ttl <= 0)
         {
           // send the demodulation result to decoder
-          std::vector<unsigned short> symbols;
+          std::vector<uint16_t> symbols;
 
           auto & pkt = d_packet[ps.packet_id];
-          unsigned int pre_ts  = pkt[0].ts;     // preamble timestamp
-          unsigned int pre_bin = pkt[0].bin;    // preamble bin
+          uint32_t pre_ts  = pkt[0].ts;     // preamble timestamp
+          uint32_t pre_bin = pkt[0].bin;    // preamble bin
           float        pre_h   = pkt[0].h;      // preamble peak height
           #if DEBUG >= DEBUG_VERBOSE_VERBOSE
             std::cout << "preamble ts: " << pre_ts << ", preamble bin: " << pre_bin << std::endl;
             std::cout << "ts: ";
-            for (unsigned int i = 1; i < pkt.size(); i++)
+            for (uint32_t i = 1; i < pkt.size(); i++)
             {
               std::cout << pkt[i].ts << ", ";
             }
             std::cout << std::endl << "bin: ";
-            for (unsigned int i = 1; i < pkt.size(); i++)
+            for (uint32_t i = 1; i < pkt.size(); i++)
             {
               std::cout << pkt[i].bin << ", ";
             }
             std::cout << std::endl;
 
             std::cout << " d_packet size: ";
-            for (unsigned int i = 0; i < d_packet.size(); i++)
+            for (uint32_t i = 0; i < d_packet.size(); i++)
             {
               std::cout << d_packet[i].size() << ",";
             }
             std::cout << std::endl;
 
             std::cout << "current packet id: " << ps.packet_id << ", d_packet id: ";
-            for (unsigned int i = 0; i < d_packet_id_pool.size(); i++)
+            for (uint32_t i = 0; i < d_packet_id_pool.size(); i++)
             {
               std::cout << d_packet_id_pool[i] << ",";
             }
@@ -681,13 +681,13 @@ namespace gr {
           // There are 4.25 symbols between preamble and data payload
           // ts_data - ts_preamble = 5*d_num_samples (ts_preamble has 0.25 fix in our implementation)
           // The first data symbol timestamp is in ts_preamble+[4.5,5.5]*d_num_samples
-          unsigned int ts_interval_l = 4*d_num_samples + d_num_samples/2;
+          uint32_t ts_interval_l = 4*d_num_samples + d_num_samples/2;
           // "i" starts from 1, ignoring preamble
-          for (unsigned int start_idx = 1; start_idx < pkt.size(); )
+          for (uint32_t start_idx = 1; start_idx < pkt.size(); )
           {
             bool is_first = true;
             bool found = false;
-            unsigned int end_idx = start_idx;
+            uint32_t end_idx = start_idx;
             for (; end_idx < pkt.size(); end_idx++)
             {
               if (is_first)
@@ -715,8 +715,8 @@ namespace gr {
             {
               // search the best matched peak for the packet
               float min_dis = std::numeric_limits<float>::infinity();
-              unsigned int idx = start_idx;
-              for (unsigned int i = start_idx; i < end_idx; i++)
+              uint32_t idx = start_idx;
+              for (uint32_t i = start_idx; i < end_idx; i++)
               {
                 float dis = get_dis(pkt[i].ts, pkt[i].h, pre_ts, pre_h);
                 if (dis < min_dis)
@@ -728,7 +728,7 @@ namespace gr {
 
               // ts could have overflowed
               int bin_shift = gr::lora::pmod(pkt[idx].ts - pre_ts, d_num_samples) * d_bin_size / d_num_samples;
-              unsigned int bin = gr::lora::pmod(pkt[idx].bin - pre_bin - bin_shift, d_bin_size);
+              uint32_t bin = gr::lora::pmod(pkt[idx].bin - pre_bin - bin_shift, d_bin_size);
               symbols.push_back(bin / d_fft_size_factor);
 
               #if DEBUG >= DEBUG_VERBOSE

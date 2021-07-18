@@ -23,5 +23,6 @@ install(FILES
     lora_mod.block.yml
     lora_pyramid_demod.block.yml
     lora_decode.block.yml
-    lora_encode.block.yml DESTINATION share/gnuradio/grc/blocks
+    lora_encode.block.yml
+    lora_weak_demod.block.yml DESTINATION share/gnuradio/grc/blocks
 )
